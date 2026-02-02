@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  tool-email-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kamiwazaai/tool-email-mcp:1.0.0
+    ports:
+      - "8000"
+    environment:
+      - PORT=8000
+      - MCP_PORT=8000
+      - MCP_PATH=/mcp
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: "1G"

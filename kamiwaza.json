@@ -1,0 +1,34 @@
+{
+  "name": "tool-email-mcp",
+  "version": "1.0.0",
+  "kamiwaza_version": ">=0.9.0",
+  "source_type": "kamiwaza",
+  "visibility": "public",
+  "description": "Secure email operations tool for Gmail and Outlook. Read, send, reply, forward, and search emails with federal-standard security controls and OAuth 2.0 authentication.",
+  "category": "communication",
+  "tags": [
+    "tool",
+    "email",
+    "gmail",
+    "outlook",
+    "communication",
+    "oauth"
+  ],
+  "author": "Kamiwaza",
+  "license": "MIT",
+  "image": "kamiwazaai/tool-email-mcp",
+  "risk_tier": 2,
+  "verified": false,
+  "capabilities": [
+    "email_read",
+    "email_write",
+    "email_search",
+    "oauth_authentication"
+  ],
+  "required_env_vars": [],
+  "env_defaults": {
+    "PORT": "8000",
+    "MCP_PORT": "8000",
+    "MCP_PATH": "/mcp"
+  }
+}

@@ -1,0 +1,69 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+  issue_comment:
+    types: [created]
+
+# Prevent concurrent reviews on the same PR
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  # Automatic code review on PR open/update
+  review:
+    name: Code Review
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'pull_request' &&
+      !github.event.pull_request.draft
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review this pull request for:
+            1. **Code Quality**: Clean code, appropriate abstractions, no code smells
+            2. **Security**: Input validation, authentication, secrets handling, OWASP top 10
+            3. **Best Practices**: Error handling, logging, documentation
+            4. **Docker/Container**: Proper Dockerfile practices, no bind mounts, resource limits
+            5. **Extension Standards**: kamiwaza.json validity, App Garden compatibility
+
+            Focus on actionable feedback. Be concise but thorough.
+            For each issue found, suggest a specific fix.
+
+  # Interactive Q&A when @claude is mentioned in comments
+  respond:
+    name: Respond to @claude
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '@claude')
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Claude Respond
+        uses: anthropics/claude-code-action@v1
+        with:
+          api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Action auto-detects @claude mention and responds appropriately

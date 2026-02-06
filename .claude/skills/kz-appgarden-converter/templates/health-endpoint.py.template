@@ -1,0 +1,22 @@
+# Health check endpoint for Kamiwaza App Garden
+# Add this to your FastAPI application
+
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for App Garden."""
+    return {"status": "healthy"}
+
+
+# For Flask applications:
+# @app.route('/health')
+# def health_check():
+#     return {'status': 'healthy'}
+
+
+# For Streamlit applications:
+# Health checks are handled automatically by Streamlit
+# No additional code needed

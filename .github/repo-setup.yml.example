@@ -1,0 +1,42 @@
+# GitHub Repository Setup Configuration
+# Copy to .github/repo-setup.yml to use with scripts/setup-github-repo.sh
+#
+# Usage:
+#   ./scripts/setup-github-repo.sh                    # Uses this config if present
+#   CONFIG_FILE=path/to/config.yml ./scripts/...     # Use specific config
+
+# Repository topics (array)
+topics:
+  - extensions
+
+# Branch configuration
+default_branch: main
+create_develop: true
+
+# Branch naming rules (enforces naming conventions)
+branch_naming_enabled: true
+branch_naming_pattern: '^(main|develop|feature/.+|fix/.+|hotfix/.+|release/.+|chore/.+|docs/.+|refactor/.+|ci/.+|build/.+|test/.+|perf/.+|deps/.+|dependabot/.+|renovate/.+)$'
+
+# Branch protection settings
+protection_enabled: true
+protected_branches:
+  - main
+  - develop
+
+# Pull request reviews
+require_pr_reviews: true
+required_approvers: 1
+dismiss_stale_reviews: true
+
+# Status checks
+require_status_checks: true
+require_up_to_date: true
+
+# Push/delete restrictions
+block_force_push: true
+block_deletions: true
+
+# Additional requirements
+require_conversation_resolution: false
+require_signed_commits: false
+require_linear_history: false

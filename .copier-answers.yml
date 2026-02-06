@@ -1,0 +1,8 @@
+# Changes here will be overwritten by Copier; do NOT edit manually
+_commit: 0.3.8
+_src_path: kamiwaza-extensions-template
+author_email: eng@kamiwaza.ai
+author_name: Kamiwaza Engineering
+docker_org: kamiwazaai
+github_org: kamiwaza-internal
+project_name: email-mcp-extensions

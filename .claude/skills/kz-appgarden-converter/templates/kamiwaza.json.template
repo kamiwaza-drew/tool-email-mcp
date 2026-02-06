@@ -1,0 +1,13 @@
+{
+  "name": "{{NAME}}",
+  "version": "1.0.0",
+  "source_type": "kamiwaza",
+  "visibility": "public",
+  "description": "{{DESCRIPTION}}",
+  "risk_tier": 1,
+  "verified": false,
+  "preferred_model_type": "{{MODEL_TYPE}}",
+  "env_defaults": {
+    "PUBLIC_URL": "https://localhost:{app_port}"
+  }
+}

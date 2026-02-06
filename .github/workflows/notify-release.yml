@@ -1,0 +1,74 @@
+name: Notify Release
+
+on:
+  push:
+    tags:
+      # Semver tags with or without 'v' prefix
+      - '[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      # Also match prerelease versions
+      - '[0-9]+.[0-9]+.[0-9]+-*'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+
+jobs:
+  notify-slack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine repo type and guidance
+        id: guidance
+        run: |
+          REPO_NAME="${{ github.event.repository.name }}"
+          if [[ "$REPO_NAME" == *"template"* ]]; then
+            echo "header=New Template Release: ${REPO_NAME}" >> $GITHUB_OUTPUT
+            echo "guidance=To update your extension repos, run: \`copier update --trust --skip-answered\`" >> $GITHUB_OUTPUT
+          else
+            echo "header=New Extension Release: ${REPO_NAME}" >> $GITHUB_OUTPUT
+            echo "guidance=New extensions available in the App Garden and Tool Shed. Visit your Kamiwaza instance to deploy." >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_EXTENSION_RELEASE_NOTIFIER_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "${{ steps.guidance.outputs.header }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Tag:*\n`${{ github.ref_name }}`"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Released by:*\n${{ github.actor }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "${{ steps.guidance.outputs.guidance }}"
+                  }
+                },
+                {
+                  "type": "context",
+                  "elements": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "<${{ github.server_url }}/${{ github.repository }}|${{ github.repository }}> • <${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}|View Release>"
+                    }
+                  ]
+                }
+              ]
+            }

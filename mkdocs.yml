@@ -1,0 +1,64 @@
+site_name: kamiwaza-extensions
+repo_url: https://github.com/jxstanford/kamiwaza-extensions
+site_url: https://jxstanford.github.io/kamiwaza-extensions
+site_description: This repository is a centralized repository for official and community-contributed app garden and tool shed extensions.
+site_author: John Stanford
+edit_uri: edit/main/docs/
+repo_name: jxstanford/kamiwaza-extensions
+copyright: Maintained by <a href="https://jxstanford.com">jxstanford</a>.
+
+nav:
+  - Home: index.md
+  - Guides:
+      - Extension Developer Guide: extension-developer-guide.md
+      - Service Templates: service-templates.md
+      - Health Checks: health-checks.md
+      - Environment Setup: environment-setup.md
+      - Auth Integration: auth-integration-guide.md
+      - Data Integration: data-integration-guide.md
+      - Path-Based Routing: path-based-routing-cheatsheet.md
+      - Logout Flow: logout-flow.md
+      - Migration Guide: migration-guide.md
+  - Reference:
+      - Modules: modules.md
+      - Template Management: template-management.md
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: ["kamiwaza_extensions"]
+theme:
+  name: material
+  feature:
+    tabs: true
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: white
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: deep orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/jxstanford/kamiwaza-extensions
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/kamiwaza-extensions
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true

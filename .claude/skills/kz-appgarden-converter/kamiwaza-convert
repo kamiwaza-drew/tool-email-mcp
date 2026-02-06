@@ -1,0 +1,21 @@
+#!/bin/bash
+# Kamiwaza App Garden Converter
+# One-command conversion of GitHub repositories to Kamiwaza extensions
+#
+# Usage:
+#   kamiwaza-convert https://github.com/user/repo my-app
+#   kamiwaza-convert /path/to/project my-app ~/output-dir
+#
+# For more options:
+#   kamiwaza-convert --help
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Check Python availability
+if ! command -v python3 &> /dev/null; then
+    echo "Error: python3 is required but not found"
+    exit 1
+fi
+
+# Run the converter
+exec python3 "$SCRIPT_DIR/convert.py" "$@"

@@ -1,0 +1,67 @@
+{
+  "name": "@kamiwaza/auth",
+  "version": "0.2.0",
+  "description": "Kamiwaza Forward Auth utilities for Next.js frontends",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/index-client.d.ts",
+      "import": "./dist/index-client.mjs",
+      "require": "./dist/index-client.js"
+    },
+    "./server": {
+      "types": "./dist/index-server.d.ts",
+      "import": "./dist/index-server.mjs",
+      "require": "./dist/index-server.js"
+    },
+    "./middleware": {
+      "types": "./dist/index-middleware.d.ts",
+      "import": "./dist/index-middleware.mjs",
+      "require": "./dist/index-middleware.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts src/index-client.ts src/index-server.ts src/index-middleware.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts src/index-client.ts src/index-server.ts src/index-middleware.ts --format cjs,esm --dts --watch",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'No tests yet'"
+  },
+  "dependencies": {
+    "uuid": "^9.0.0"
+  },
+  "peerDependencies": {
+    "next": ">=14.0.0",
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/uuid": "^9.0.0",
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "keywords": [
+    "kamiwaza",
+    "auth",
+    "forward-auth",
+    "nextjs",
+    "app-garden",
+    "session",
+    "authentication"
+  ],
+  "license": "MIT"
+}

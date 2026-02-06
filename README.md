@@ -1,356 +1,156 @@
-# Email MCP Tool
+# email-mcp-extensions
 
-A secure email tool for Kamiwaza that lets you read, send, and manage emails through Gmail, Outlook, or any IMAP server.
+Kamiwaza extensions repository for kamiwazaai.
+
+## Overview
+
+This repository contains Kamiwaza platform extensions:
+- **Apps** (`apps/`): Multi-service applications deployed to App Garden
+- **Services** (`services/`): App Garden backend services (e.g., vector databases)
+- **Tools** (`tools/`): MCP protocol servers deployed to Tool Shed
 
 ## Quick Start
 
-### 1. Install & Run
+### Prerequisites
+
+- Docker and Docker Compose
+- Python 3.10+
+- [uv](https://github.com/astral-sh/uv) (recommended) or pip
+
+### Setup
 
 ```bash
-cd /home/kamiwaza/tools/tool-email-mcp
-docker-compose up -d
-curl http://localhost:8000/health  # Should return {"status": "healthy"}
+# Install development dependencies
+make install
+
+# List available extensions
+make list
 ```
 
-### 2. Choose Your Email Provider
-
-Pick one:
-
-**Option A: IMAP (Simplest - Works with any email)**
-```bash
-# Set environment variables in docker-compose.yml or .env.imap
-IMAP_USERNAME=your-email@gmail.com
-IMAP_PASSWORD=your-app-password
-IMAP_SERVER=imap.gmail.com
-IMAP_PORT=993
-SMTP_SERVER=smtp.gmail.com
-SMTP_PORT=465
-```
-
-**Option B: Gmail OAuth (More secure)**
-- Get credentials from [Google Cloud Console](https://console.cloud.google.com/)
-- Enable Gmail API
-- Use `configure_email_provider` tool (see below)
-
-**Option C: Outlook OAuth**
-- Register app in [Azure Portal](https://portal.azure.com/)
-- Set up Mail permissions
-- Use `configure_email_provider` tool (see below)
-
-### 3. Start Using
-
-The tool is ready! See [Common Tasks](#common-tasks) below.
-
----
-
-## Common Tasks
-
-### Read Your Inbox
-
-```json
-{
-  "tool": "list_emails",
-  "arguments": {
-    "folder": "INBOX",
-    "limit": 10
-  }
-}
-```
-
-**Returns:** List of recent emails with subject, sender, date
-
----
-
-### Read a Specific Email
-
-```json
-{
-  "tool": "read_email",
-  "arguments": {
-    "message_id": "18c4f..."
-  }
-}
-```
-
-**Returns:** Full email content including body
-
----
-
-### Send an Email
-
-```json
-{
-  "tool": "send_email",
-  "arguments": {
-    "to": ["recipient@example.com"],
-    "subject": "Hello",
-    "body": "This is my message"
-  }
-}
-```
-
-**Optional:** Add `"cc": [...]`, `"bcc": [...]`, `"html": true`
-
----
-
-### Reply to an Email
-
-```json
-{
-  "tool": "reply_email",
-  "arguments": {
-    "message_id": "18c4f...",
-    "body": "Thanks for your email!",
-    "reply_all": false
-  }
-}
-```
-
----
-
-### Search Emails
-
-**Gmail:**
-```json
-{
-  "tool": "search_emails",
-  "arguments": {
-    "query": "from:boss@company.com subject:urgent",
-    "limit": 20
-  }
-}
-```
-
-**IMAP (simple text search):**
-```json
-{
-  "tool": "search_emails",
-  "arguments": {
-    "query": "urgent",
-    "limit": 20
-  }
-}
-```
-
----
-
-## All Available Tools
-
-| Tool | What it does |
-|------|-------------|
-| `list_emails` | List emails in a folder (INBOX, Sent, etc.) |
-| `read_email` | Read full email content |
-| `send_email` | Send a new email |
-| `reply_email` | Reply to an email |
-| `forward_email` | Forward an email to others |
-| `search_emails` | Search for specific emails |
-| `delete_email` | Move email to trash |
-| `mark_email_read` | Mark email as read/unread |
-| `get_folders` | List all folders/labels |
-| `configure_email_provider` | Set up OAuth credentials |
-
----
-
-## Setup Guides
-
-### Gmail with App Password (Easiest)
-
-1. **Enable 2-Step Verification** in your Google Account
-2. **Create App Password:**
-   - Go to [Google Account Security](https://myaccount.google.com/security)
-   - Click "2-Step Verification" → "App passwords"
-   - Generate password for "Mail"
-3. **Configure:**
-   ```bash
-   IMAP_USERNAME=your-email@gmail.com
-   IMAP_PASSWORD=<16-character-app-password>
-   IMAP_SERVER=imap.gmail.com
-   SMTP_SERVER=smtp.gmail.com
-   ```
-
-### Gmail with OAuth (More Secure)
-
-1. **Create Google Cloud Project:**
-   - Go to [Google Cloud Console](https://console.cloud.google.com/)
-   - Create new project
-
-2. **Enable Gmail API:**
-   - APIs & Services → Library → Search "Gmail API" → Enable
-
-3. **Create OAuth Client:**
-   - APIs & Services → Credentials → Create OAuth client ID
-   - Type: Web application or Desktop app
-   - Download JSON with `client_id` and `client_secret`
-
-4. **Get Access Token:**
-   - Use [OAuth Playground](https://developers.google.com/oauthplayground/)
-   - Scopes needed:
-     - `https://www.googleapis.com/auth/gmail.readonly`
-     - `https://www.googleapis.com/auth/gmail.send`
-     - `https://www.googleapis.com/auth/gmail.modify`
-
-5. **Configure via MCP:**
-   ```json
-   {
-     "tool": "configure_email_provider",
-     "arguments": {
-       "provider": "gmail",
-       "credentials": {
-         "token": "ya29.a0...",
-         "refresh_token": "1//...",
-         "client_id": "123...apps.googleusercontent.com",
-         "client_secret": "GOCSPX-..."
-       }
-     }
-   }
-   ```
-
-### Outlook OAuth
-
-1. **Register Azure App:**
-   - [Azure Portal](https://portal.azure.com/) → Azure Active Directory → App registrations
-   - New registration → Name: "Email MCP Tool"
-   - Redirect URI: `http://localhost:8000/oauth/callback`
-
-2. **Add Permissions:**
-   - API permissions → Add Microsoft Graph:
-     - Mail.Read
-     - Mail.ReadWrite
-     - Mail.Send
-   - Grant admin consent
-
-3. **Create Secret:**
-   - Certificates & secrets → New client secret → Copy value
-
-4. **Get Token & Configure:**
-   ```json
-   {
-     "tool": "configure_email_provider",
-     "arguments": {
-       "provider": "outlook",
-       "credentials": {
-         "access_token": "eyJ0eXAi..."
-       }
-     }
-   }
-   ```
-
-### Other IMAP Servers
-
-Works with any email provider that supports IMAP:
+### Creating Extensions
 
 ```bash
-# Yahoo Mail
-IMAP_SERVER=imap.mail.yahoo.com
-SMTP_SERVER=smtp.mail.yahoo.com
+# Create a new app
+make new TYPE=app NAME=my-app
 
-# Outlook/Office365
-IMAP_SERVER=outlook.office365.com
-SMTP_SERVER=smtp.office365.com
+# Create a new service
+make new TYPE=service NAME=service-milvus
 
-# Custom domain
-IMAP_SERVER=mail.yourdomain.com
-SMTP_SERVER=mail.yourdomain.com
+# Create a new tool
+make new TYPE=tool NAME=my-tool
 ```
 
----
-
-## Security Features
-
-- ✅ **No password storage** in code (OAuth preferred)
-- ✅ **Input validation** prevents injection attacks
-- ✅ **Rate limiting** prevents abuse
-- ✅ **SSL/TLS encryption** for all connections
-- ✅ **Non-root container** for isolation
-- ✅ **Audit logging** tracks all operations
-
----
-
-## Troubleshooting
-
-### "Authentication failed"
-
-**IMAP:**
-- Check username/password are correct
-- For Gmail: Use app password, not account password
-- Verify IMAP is enabled in email settings
-
-**OAuth:**
-- Token may be expired → Get new token
-- Check client_id and client_secret are correct
-
-### "Connection refused"
+### Development Workflow
 
 ```bash
-# Check if container is running
-docker ps | grep email-mcp
+# Build an extension
+make build TYPE=app NAME=my-app
 
-# Check logs
-docker-compose logs tool-email-mcp
+# Test an extension
+make test TYPE=app NAME=my-app
 
-# Restart
-docker-compose restart
+# Validate all extensions
+make validate
+
+# Run full CI pipeline
+make ci-pipeline
 ```
 
-### Gmail "Less secure app" error
+## Structure
 
-Gmail no longer allows less secure apps. Use either:
-1. App passwords (with 2FA enabled)
-2. OAuth 2.0
+```
+email-mcp-extensions/
+├── apps/                    # Multi-service applications
+│   └── {app-name}/
+│       ├── kamiwaza.json    # Extension metadata
+│       ├── docker-compose.yml
+│       ├── backend/
+│       └── frontend/
+├── services/                # App Garden backend services
+│   └── {service-name}/
+│       ├── kamiwaza.json
+│       └── docker-compose.yml
+├── tools/                   # MCP tool servers
+│   └── {tool-name}/
+│       ├── kamiwaza.json
+│       ├── Dockerfile
+│       └── src/
+├── shared/                  # Shared libraries
+│   ├── python/
+│   └── typescript/
+├── make/                    # Build system modules
+├── scripts/                 # Build/test scripts
+└── .ai/                     # AI assistant rules
+```
 
-### Rate limit errors
+## Extension Requirements
 
-You're making too many requests. Wait a few minutes and try again.
+Each extension must have:
+- `kamiwaza.json` with name, version, risk_tier
+- `Dockerfile` for each service
+- `docker-compose.yml` for local development
+- Health endpoint at `GET /health` (apps only)
 
----
+See `.ai/rules/architecture.md` for detailed requirements.
 
-## Development
+## Updating from Upstream
 
-### Run Tests
+This repository was created from the Kamiwaza extensions template. To pull infrastructure updates:
 
 ```bash
-pip install -r requirements.txt
-pytest tests/ -v
+# Update shared infrastructure (preserves apps/, services/, and tools/)
+copier update --trust --skip-answered --defaults
+
+# Review changes
+git diff
+
+# Commit updates
+git add -A && git commit -m "Update infrastructure from upstream"
 ```
 
-### Local Development
+Tip: keep `.copier-answers.yml` committed so the template source is known. The flags above make the update non-interactive by reusing stored answers.
+
+## Commands Reference
+
+| Command | Description |
+|---------|-------------|
+| `make list` | List all extensions |
+| `make new TYPE=app NAME=x` | Create new app |
+| `make new TYPE=service NAME=x` | Create new service |
+| `make new TYPE=tool NAME=x` | Create new tool |
+| `make build TYPE=app NAME=x` | Build extension |
+| `make test TYPE=app NAME=x` | Test extension |
+| `make validate` | Validate all extensions |
+| `make sync-compose` | Generate App Garden configs |
+| `make build-registry` | Build extension registry |
+| `make ci-pipeline` | Run full CI pipeline |
+
+## Configuration
+
+Docker images are prefixed with: `kamiwazaai/`
+
+## GitHub Bootstrap
+
+After creating the repo on GitHub, configure topics, branches, and protection rules:
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Interactive mode - prompts for each option
+./scripts/setup-github-repo.sh
 
-# Run server locally
-python -m tool_email_mcp.server
+# Or use a config file for non-interactive setup
+cp .github/repo-setup.yml.example .github/repo-setup.yml
+# Edit config as needed, then run:
+./scripts/setup-github-repo.sh
 ```
 
----
+**What it configures:**
+- Topics (`extensions`)
+- Develop branch from main
+- Branch naming rules (enforces `feature/*`, `fix/*`, etc.)
+- Branch protection (PR reviews, status checks, force push blocking)
 
-## File Structure
-
-```
-tool-email-mcp/
-├── src/tool_email_mcp/
-│   ├── server.py              # FastMCP server with 10 tools
-│   ├── security.py            # Input validation & security
-│   ├── email_operations.py    # Email operation logic
-│   ├── imap_provider.py       # IMAP/SMTP implementation
-│   ├── gmail_provider.py      # Gmail OAuth implementation
-│   └── outlook_provider.py    # Outlook OAuth implementation
-├── docker-compose.yml         # Docker setup
-├── Dockerfile                 # Container definition
-├── requirements.txt           # Python dependencies
-└── kamiwaza.json             # Tool metadata
-```
-
----
-
-## Support
-
-- **Issues:** [GitHub Issues](https://github.com/kamiwaza-drew/tool-email-mcp/issues)
-- **Security:** Report privately to security@kamiwaza.ai
-
----
+See `.github/repo-setup.yml.example` for all configuration options.
 
 ## License
 
-MIT License
+Proprietary - kamiwazaai

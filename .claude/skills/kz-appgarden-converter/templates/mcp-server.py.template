@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+"""
+MCP Server wrapper for Kamiwaza App Garden.
+
+This template wraps an existing tool/library as an MCP (Model Context Protocol) server.
+MCP servers expose tools that AI models can call directly.
+
+Usage:
+    uvicorn server:app --host 0.0.0.0 --port 8000
+"""
+
+from mcp import FastMCP
+from pydantic import BaseModel, Field
+from typing import Optional
+import os
+
+# Initialize the MCP server
+mcp = FastMCP("{{NAME}}")
+
+
+# Define input/output models for type safety
+class FunctionInput(BaseModel):
+    """Input parameters for the function."""
+    param: str = Field(..., description="Description of the parameter")
+    optional_param: Optional[str] = Field(None, description="Optional parameter")
+
+
+class FunctionOutput(BaseModel):
+    """Output from the function."""
+    result: str
+    success: bool = True
+
+
+# Define your tools using the @mcp.tool() decorator
+@mcp.tool()
+async def function_name(input: FunctionInput) -> FunctionOutput:
+    """
+    Description of what this tool does.
+
+    This docstring is visible to the AI model, so write it clearly
+    to help the model understand when and how to use this tool.
+
+    Args:
+        input: The input parameters
+
+    Returns:
+        The result of the operation
+    """
+    # Your implementation here
+    result = f"Processed: {input.param}"
+
+    return FunctionOutput(result=result, success=True)
+
+
+# Create the FastAPI app from the MCP server
+app = mcp.create_fastapi_app()
+
+
+# Add health check endpoint (required for App Garden apps)
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for App Garden."""
+    return {"status": "healthy"}
+
+
+# Optional: Add startup/shutdown events
+@app.on_event("startup")
+async def startup():
+    """Initialize resources on startup."""
+    pass
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    """Cleanup resources on shutdown."""
+    pass
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

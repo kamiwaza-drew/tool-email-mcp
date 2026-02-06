@@ -1,0 +1,48 @@
+{
+  "name": "@kamiwaza/client",
+  "version": "0.1.0",
+  "description": "Kamiwaza TypeScript SDK - mirrors official Python SDK",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/index-server.d.ts",
+      "import": "./dist/index-server.mjs",
+      "require": "./dist/index-server.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "keywords": [
+    "kamiwaza",
+    "sdk",
+    "client",
+    "api",
+    "typescript"
+  ],
+  "license": "MIT"
+}

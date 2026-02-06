@@ -1,0 +1,1 @@
+::: kamiwaza_extensions.foo

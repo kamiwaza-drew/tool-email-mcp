@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python linting tools
+        run: pip install ruff mypy
+
+      - name: Run ruff check (Python linting)
+        run: ruff check . --output-format=github
+
+      - name: Run ruff format check (Python formatting)
+        run: ruff format --check .
+
+      - name: Run mypy (Python type checking)
+        run: mypy . --ignore-missing-imports --no-error-summary || true
+        # Note: mypy may fail on untyped code; adjust strictness as needed
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Find and lint TypeScript/JavaScript projects
+        run: |
+          # Find all directories with package.json (excluding node_modules)
+          for pkg in $(find apps tools services -name "package.json" -not -path "*/node_modules/*" 2>/dev/null); do
+            dir=$(dirname "$pkg")
+            echo "=== Checking $dir ==="
+            cd "$dir"
+
+            # Install dependencies if needed
+            if [ -f "package-lock.json" ]; then
+              npm ci
+            elif [ -f "pnpm-lock.yaml" ]; then
+              corepack enable && pnpm install --frozen-lockfile
+            elif [ -f "bun.lockb" ]; then
+              npm install -g bun && bun install --frozen-lockfile
+            fi
+
+            # Run eslint if configured
+            if [ -f ".eslintrc.js" ] || [ -f ".eslintrc.json" ] || [ -f "eslint.config.js" ] || [ -f "eslint.config.mjs" ]; then
+              echo "Running eslint..."
+              npx eslint . --format stylish || true
+            fi
+
+            # Run TypeScript type check if configured
+            if [ -f "tsconfig.json" ]; then
+              echo "Running tsc type check..."
+              npx tsc --noEmit || true
+            fi
+
+            cd - > /dev/null
+          done
+          echo "=== Lint complete ==="
+
+  ci-pipeline:
+    name: CI Pipeline
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Run CI Pipeline
+        run: make ci-pipeline
+
+      - name: Check for uncommitted changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::Uncommitted changes detected after ci-pipeline (likely from sync-compose)"
+            git diff
+            exit 1
+          fi

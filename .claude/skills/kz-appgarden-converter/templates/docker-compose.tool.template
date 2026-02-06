@@ -1,0 +1,21 @@
+# Docker Compose for Kamiwaza App Garden
+# Template for MCP tool
+
+services:
+  tool:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kamiwazaai/{{NAME}}:1.0.0
+    ports:
+      - "8000"
+    environment:
+      - KAMIWAZA_ENDPOINT=${KAMIWAZA_ENDPOINT:-http://host.docker.internal:8080}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "1G"
+    restart: unless-stopped

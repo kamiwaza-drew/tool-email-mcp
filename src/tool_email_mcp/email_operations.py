@@ -8,6 +8,8 @@ import os
 from typing import Dict, List, Optional, Any
 from .security import SecurityManager
 from .providers import EmailProvider, GmailProvider, OutlookProvider
+from .imap_provider import IMAPProvider
+from .pop3_provider import POP3Provider
 
 
 class EmailOperations:
@@ -40,11 +42,28 @@ class EmailOperations:
         provider_type: str,
         credentials: Dict[str, str]
     ) -> Dict[str, Any]:
-        """Configure email provider with OAuth credentials.
+        """Configure email provider with OAuth credentials, IMAP, or POP3.
 
         Args:
-            provider_type: "gmail" or "outlook"
-            credentials: OAuth credentials dictionary
+            provider_type: "gmail", "outlook", "imap", or "pop3"
+            credentials: OAuth credentials dictionary or IMAP/POP3 credentials
+                For IMAP:
+                    - username: Email address
+                    - password: Email password
+                    - imap_server: IMAP server hostname
+                    - imap_port: IMAP port (default 993)
+                    - smtp_server: SMTP server hostname (optional, defaults to imap_server)
+                    - smtp_port: SMTP port (default 465)
+                    - use_ssl: Use SSL/TLS (default True)
+                For POP3:
+                    - username: Email address
+                    - password: Email password
+                    - pop_server: POP3 server hostname
+                    - pop_port: POP3 port (default 995)
+                    - smtp_server: SMTP server hostname
+                    - smtp_port: SMTP port (default 587)
+                    - use_ssl: Use SSL for POP3 (default True)
+                    - use_starttls: Use STARTTLS for SMTP (default True)
 
         Returns:
             Dict with success status
@@ -64,10 +83,41 @@ class EmailOperations:
                     "provider": "outlook",
                     "message": "Outlook provider configured"
                 }
+            elif provider_type.lower() == "imap":
+                self.provider = IMAPProvider(
+                    username=credentials.get("username"),
+                    password=credentials.get("password"),
+                    imap_server=credentials.get("imap_server"),
+                    imap_port=int(credentials.get("imap_port", 993)),
+                    smtp_server=credentials.get("smtp_server"),
+                    smtp_port=int(credentials.get("smtp_port", 465)),
+                    use_ssl=credentials.get("use_ssl", "true").lower() == "true"
+                )
+                return {
+                    "success": True,
+                    "provider": "imap",
+                    "message": f"IMAP provider configured for {credentials.get('username')}"
+                }
+            elif provider_type.lower() == "pop3":
+                self.provider = POP3Provider(
+                    username=credentials.get("username"),
+                    password=credentials.get("password"),
+                    pop_server=credentials.get("pop_server"),
+                    pop_port=int(credentials.get("pop_port", 995)),
+                    smtp_server=credentials.get("smtp_server"),
+                    smtp_port=int(credentials.get("smtp_port", 587)),
+                    use_ssl=credentials.get("use_ssl", "true").lower() == "true",
+                    use_starttls=credentials.get("use_starttls", "true").lower() == "true"
+                )
+                return {
+                    "success": True,
+                    "provider": "pop3",
+                    "message": f"POP3 provider configured for {credentials.get('username')}"
+                }
             else:
                 return {
                     "success": False,
-                    "error": f"Unknown provider: {provider_type}. Use 'gmail' or 'outlook'"
+                    "error": f"Unknown provider: {provider_type}. Use 'gmail', 'outlook', 'imap', or 'pop3'"
                 }
 
         except ImportError as e:

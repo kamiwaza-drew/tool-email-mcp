@@ -3,12 +3,13 @@
 Extracts session from cookies and makes it available to tools via context variables.
 """
 
+from collections.abc import Callable
+
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
-from typing import Callable
 
-from .context import session_context, set_current_session
+from .context import session_context, set_current_request_token
 from .session_manager import SessionManager
 
 
@@ -25,11 +26,7 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.session_manager = session_manager
 
-    async def dispatch(
-        self,
-        request: Request,
-        call_next: Callable
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Process request and inject session context.
 
         Args:
@@ -39,6 +36,12 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
         Returns:
             Response from handler
         """
+        # Extract Kamiwaza PAT token from Authorization header (for OAuth Broker)
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]  # Remove "Bearer " prefix
+            set_current_request_token(token)
+
         # Extract session ID from cookie
         session_id = request.cookies.get("email_session")
 
@@ -53,7 +56,7 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
                     "user_email": session.user_email,
                     "access_token": session.access_token,
                     "expires_at": session.expires_at,
-                    "authenticated": True
+                    "authenticated": True,
                 }
 
         # Set context for this request

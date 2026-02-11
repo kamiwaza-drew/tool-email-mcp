@@ -61,9 +61,9 @@ class OAuthBrokerProvider(EmailProvider):
 
         # Log configuration mode
         if self.token_file:
-            logger.info(f"🔄 OAuth Broker configured with dynamic token from file: {self.token_file}")
+            logger.info("OAuth Broker configured with dynamic token from file: %s", self.token_file)
         else:
-            logger.warning("⚠️ OAuth Broker configured with static token (will expire)")
+            logger.warning("OAuth Broker configured with static token (will expire)")
 
     def _is_refresh_token(self, token: str) -> bool:
         """Check if token is a refresh token by decoding JWT payload.
@@ -118,7 +118,7 @@ class OAuthBrokerProvider(EmailProvider):
             )
 
             if response.status_code != 200:
-                logger.error(f"❌ Token exchange failed: {response.status_code} {response.text}")
+                logger.error("Token exchange failed: %s %s", response.status_code, response.text)
                 raise ConnectionError(f"Failed to exchange refresh token: {response.status_code}")
 
             token_data = response.json()
@@ -127,23 +127,45 @@ class OAuthBrokerProvider(EmailProvider):
             if not access_token:
                 raise ConnectionError("No access_token in token exchange response")
 
-            logger.debug(f"✅ Exchanged refresh token for access token (expires in {token_data.get('expires_in')}s)")
+            logger.debug(
+                "Exchanged refresh token for access token (expires in %ss)",
+                token_data.get("expires_in"),
+            )
             return access_token  # noqa: TRY300
 
         except requests.exceptions.RequestException as e:
-            logger.exception("❌ Token exchange request failed")
+            logger.exception("Token exchange request failed")
             raise ConnectionError("Token exchange failed: ") from e
 
     def _get_token(self) -> str:
         """Get current Kamiwaza access token.
 
-        Reads from file if token_file is configured (dynamic refresh),
-        otherwise returns static token. Automatically exchanges refresh
-        tokens for access tokens when needed.
+        Priority order:
+        1. Request context (per-request token from MCP bridge)
+        2. Token file (dynamic refresh)
+        3. Static token from env var
+
+        Automatically exchanges refresh tokens for access tokens when needed.
 
         Returns:
             Current access token string
         """
+        # Try request context first (per-request token from MCP bridge)
+        try:
+            from .context import get_current_request_token
+
+            request_token = get_current_request_token()
+            if request_token:
+                logger.debug("Using per-request token from Authorization header")
+                # Check if it's a refresh token and exchange if needed
+                if self._is_refresh_token(request_token):
+                    logger.debug("Request token is a refresh token, exchanging...")
+                    return self._exchange_refresh_token(request_token)
+                return request_token
+        except Exception as e:
+            logger.debug("No request token available: %s", e)
+
+        # Fall back to token file (dynamic refresh)
         if self.token_file:
             try:
                 with open(self.token_file) as f:
@@ -153,20 +175,20 @@ class OAuthBrokerProvider(EmailProvider):
 
                     # Check if it's a refresh token and exchange if needed
                     if self._is_refresh_token(token):
-                        logger.debug("🔄 Detected refresh token, exchanging for access token...")
+                        logger.debug("Detected refresh token, exchanging for access token...")
                         return self._exchange_refresh_token(token)
 
                     return token
             except FileNotFoundError:
-                logger.exception(f"❌ Token file not found: {self.token_file}")
+                logger.exception("Token file not found: %s", self.token_file)
                 raise ConnectionError(f"Token file not found: {self.token_file}") from None
             except Exception as e:
-                logger.exception("❌ Error reading token file {self.token_file}")
+                logger.exception("Error reading token file %s", self.token_file)
                 raise ConnectionError("Error reading token file: ") from e
         else:
             # Static token - check if it's a refresh token
             if self._is_refresh_token(self.static_token):
-                logger.debug("🔄 Static token is a refresh token, exchanging for access token...")
+                logger.debug("Static token is a refresh token, exchanging for access token...")
                 return self._exchange_refresh_token(self.static_token)
 
             return self.static_token
@@ -226,15 +248,8 @@ class OAuthBrokerProvider(EmailProvider):
         url = f"{self.broker_url}/proxy/google/gmail/{endpoint}"
         params = {"app_id": self.app_id, "tool_id": self.tool_id}
 
-        # INSECURE DEBUG LOGGING
-        logger.error("=" * 70)
-        logger.error("🔍 OAUTH BROKER PROXY CALL DEBUG")
-        logger.error("=" * 70)
-        logger.error(f"📍 URL: {url}")
-        logger.error(f"📋 Params: {params}")
-        logger.error(f"🔑 Token (truncated): {token[:20]}...{token[-10:]}")
-        logger.error(f"📦 Data: {data}")
-        logger.error("-" * 70)
+        # Safe debug logging (no tokens, no request body)
+        logger.debug("OAuth Broker proxy call: endpoint=%s url=%s params=%s", endpoint, url, params)
 
         # Use full token for actual request
         real_headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
@@ -249,34 +264,27 @@ class OAuthBrokerProvider(EmailProvider):
                 verify=False,  # noqa: S501 Disable SSL verification for self-signed certificates
             )
 
-            logger.error(f"📥 Response Status: {response.status_code}")
-            logger.error(f"📥 Response Headers: {dict(response.headers)}")
+            logger.debug("OAuth Broker response: status=%s", response.status_code)
 
             try:
                 response_json = response.json()
-                logger.error(f"📥 Response Body: {response_json}")
             except Exception:  # Intentionally catch all JSON parsing errors
-                logger.exception(f"📥 Response Text: {response.text[:500]}")
+                response_json = None
+                logger.debug("OAuth Broker non-JSON response (truncated): %s", response.text[:500])
 
             # Handle authentication errors
             if response.status_code == 401:
-                logger.error("❌ 401 UNAUTHORIZED from OAuth Broker")
-
-                # Construct helpful error message for LLMs and users
-                kamiwaza_url = os.getenv("KAMIWAZA_URL", "https://localhost")
-                auth_url = f"{kamiwaza_url}/api/oauth-broker/google/start?app_id={self.app_id}"
+                logger.error("401 UNAUTHORIZED from OAuth Broker")
 
                 error_msg = (
-                    "🔐 GOOGLE ACCOUNT NOT CONNECTED\n\n"
+                    "GOOGLE ACCOUNT NOT CONNECTED\n\n"
                     "Your Google account is not connected to this Kamiwaza app installation. "
                     "To use email features, you need to authenticate with Google.\n\n"
-                    "📋 STEPS TO FIX:\n"
-                    "1. Visit the authentication URL below in your browser\n"
-                    "2. Sign in with your Google account\n"
-                    "3. Review and approve the requested Gmail permissions\n"
-                    "4. You'll be redirected back to Kamiwaza when complete\n\n"
-                    f"🔗 AUTHENTICATION URL:\n{auth_url}\n\n"
-                    "🔒 REQUIRED PERMISSIONS:\n"
+                    "STEPS TO FIX:\n"
+                    "1. Go to Kamiwaza UI -> Settings -> External Connectors\n"
+                    "2. Connect your Google Workspace / Gmail account\n"
+                    "3. Review and approve the requested Gmail permissions\n\n"
+                    "REQUIRED PERMISSIONS:\n"
                     "- gmail.readonly (read emails and settings)\n"
                     "- gmail.send (send emails)\n"
                     "- gmail.modify (mark as read/unread, apply labels)\n\n"
@@ -288,11 +296,11 @@ class OAuthBrokerProvider(EmailProvider):
             # Handle insufficient scope errors (500 with Gmail 401)
             if response.status_code == 500:
                 try:
-                    error_detail = response_json.get("detail", "")
+                    error_detail = (response_json or {}).get("detail", "")
                     if "401" in error_detail and "Unauthorized" in error_detail:
-                        logger.error("❌ INSUFFICIENT SCOPES - Gmail API returned 401")
+                        logger.error("INSUFFICIENT SCOPES - Gmail API returned 401")
                         logger.error("=" * 70)
-                        logger.error("🔴 MISSING OAUTH SCOPE ERROR")
+                        logger.error("MISSING OAUTH SCOPE ERROR")
                         logger.error("=" * 70)
                         logger.error(f"Operation '{endpoint}' requires additional Gmail permissions.")
                         logger.error("")
@@ -307,7 +315,7 @@ class OAuthBrokerProvider(EmailProvider):
                             logger.error("REQUIRED SCOPE: https://www.googleapis.com/auth/gmail.send")
                             logger.error("")
                             logger.error("USER ACTION NEEDED:")
-                            logger.error("1. Go to Kamiwaza UI → Settings → External Connectors")
+                            logger.error("1. Go to Kamiwaza UI -> Settings -> External Connectors")
                             logger.error("2. Disconnect your Google Workspace connection")
                             logger.error("3. Reconnect and grant the 'Send email' permission when prompted")
                             logger.error("")
@@ -315,7 +323,7 @@ class OAuthBrokerProvider(EmailProvider):
                             logger.error("REQUIRED SCOPE: https://www.googleapis.com/auth/gmail.modify")
                             logger.error("")
                             logger.error("USER ACTION NEEDED:")
-                            logger.error("1. Go to Kamiwaza UI → Settings → External Connectors")
+                            logger.error("1. Go to Kamiwaza UI -> Settings -> External Connectors")
                             logger.error("2. Disconnect your Google Workspace connection")
                             logger.error("3. Reconnect and grant the 'Modify email' permission when prompted")
                             logger.error("")
@@ -337,19 +345,19 @@ class OAuthBrokerProvider(EmailProvider):
                         required_scope, operation_desc = scope_info
 
                         error_msg = (
-                            f"🔒 INSUFFICIENT GMAIL PERMISSIONS\n\n"
+                            f"INSUFFICIENT GMAIL PERMISSIONS\n\n"
                             f"The operation '{endpoint}' requires a Gmail permission that wasn't granted "
                             f"when you connected your Google account.\n\n"
-                            f"📋 MISSING PERMISSION:\n"
+                            f"MISSING PERMISSION:\n"
                             f"- Scope: {required_scope}\n"
                             f"- Allows: {operation_desc}\n\n"
-                            f"📋 STEPS TO FIX:\n"
+                            f"STEPS TO FIX:\n"
                             f"1. Disconnect your Google account:\n"
                             f"   {disconnect_url}\n\n"
                             f"2. Reconnect with expanded permissions:\n"
                             f"   {reconnect_url}\n\n"
                             f"3. When prompted by Google, make sure to approve ALL requested permissions\n\n"
-                            f"💡 TIP: To avoid this issue, grant all Gmail permissions during initial connection:\n"
+                            f"TIP: To avoid this issue, grant all Gmail permissions during initial connection:\n"
                             f"- gmail.readonly (read emails)\n"
                             f"- gmail.send (send emails)\n"
                             f"- gmail.modify (organize and manage emails)\n\n"
@@ -358,50 +366,50 @@ class OAuthBrokerProvider(EmailProvider):
 
                         if endpoint == "send":
                             error_msg = (
-                                "🔒 INSUFFICIENT GMAIL PERMISSIONS\n\n"
+                                "INSUFFICIENT GMAIL PERMISSIONS\n\n"
                                 "The operation 'send' requires a Gmail permission that wasn't granted "
                                 "when you connected your Google account.\n\n"
-                                "📋 MISSING PERMISSION:\n"
+                                "MISSING PERMISSION:\n"
                                 "- Scope: gmail.send\n"
                                 "- Allows: send emails on your behalf\n\n"
-                                "📋 STEPS TO FIX:\n"
+                                "STEPS TO FIX:\n"
                                 f"1. Disconnect your Google account:\n"
                                 f"   {disconnect_url}\n\n"
                                 f"2. Reconnect with expanded permissions:\n"
                                 f"   {reconnect_url}\n\n"
                                 "3. When prompted by Google, make sure to approve the 'Send email' permission\n\n"
-                                "💡 TIP: Grant all Gmail permissions to avoid future issues."
+                                "TIP: Grant all Gmail permissions to avoid future issues."
                             )
                         elif endpoint in ["labels", "trash", "modify"]:
                             error_msg = (
-                                f"🔒 INSUFFICIENT GMAIL PERMISSIONS\n\n"
+                                f"INSUFFICIENT GMAIL PERMISSIONS\n\n"
                                 f"The operation '{endpoint}' requires the 'gmail.modify' permission which allows "
                                 f"organizing and managing your emails (labels, read/unread status, trash, etc.).\n\n"
-                                f"📋 STEPS TO FIX:\n"
+                                f"STEPS TO FIX:\n"
                                 f"1. Disconnect your Google account:\n"
                                 f"   {disconnect_url}\n\n"
                                 f"2. Reconnect with expanded permissions:\n"
                                 f"   {reconnect_url}\n\n"
                                 "3. When prompted by Google, approve the 'Modify email' permission\n\n"
-                                "💡 TIP: The modify permission is safe - it only allows organizing emails, not deleting permanently."
+                                "TIP: The modify permission is safe - it only allows organizing emails, not deleting permanently."
                             )
 
                         logger.error(error_msg)
 
                         if endpoint == "send":
                             error_msg = (
-                                "❌ Cannot send emails: Missing Gmail permission 'gmail.send'. "
+                                "Cannot send emails: Missing Gmail permission 'gmail.send'. "
                                 "RECONNECT REQUIRED: Visit the disconnect URL above, then reconnect with 'Send email' permission."
                             )
                         elif endpoint in ["labels", "trash"]:
                             error_msg = (
-                                f"❌ Cannot {endpoint}: Missing Gmail permission 'gmail.modify'. "
-                                "USER ACTION REQUIRED: Go to Kamiwaza UI → Settings → External Connectors, "
+                                f"Cannot {endpoint}: Missing Gmail permission 'gmail.modify'. "
+                                "USER ACTION REQUIRED: Go to Kamiwaza UI -> Settings -> External Connectors, "
                                 "disconnect Google Workspace, then reconnect and grant 'Modify email' permission."
                             )
                         else:
                             error_msg = (
-                                f"❌ Operation '{endpoint}' requires additional Gmail permissions. "
+                                f"Operation '{endpoint}' requires additional Gmail permissions. "
                                 "USER ACTION REQUIRED: Reconnect Google account with broader permissions."
                             )
 
@@ -412,21 +420,17 @@ class OAuthBrokerProvider(EmailProvider):
                     pass  # Fall through to generic error handling
 
             response.raise_for_status()
-            logger.error("✅ Request successful")
-            logger.error("=" * 70)
+            logger.debug("Request successful")
             return response.json()
 
         except requests.exceptions.ConnectionError as e:
-            logger.exception("❌ Connection error")
-            logger.exception("=" * 70)
+            logger.exception("Connection error")
             raise ConnectionError("Cannot connect to OAuth Broker") from e
         except requests.exceptions.Timeout:
-            logger.exception("❌ Timeout error")
-            logger.exception("=" * 70)
+            logger.exception("Timeout error")
             raise ConnectionError("OAuth Broker request timed out") from None
         except Exception:
-            logger.exception("❌ Unexpected error")
-            logger.exception("=" * 70)
+            logger.exception("Unexpected error")
             raise
 
     async def list_emails(

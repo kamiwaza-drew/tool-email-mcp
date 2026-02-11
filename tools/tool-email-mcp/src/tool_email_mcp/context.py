@@ -6,16 +6,17 @@ across tool invocations without modifying tool signatures.
 
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Optional, Dict, Any
+from typing import Any
 
 # Context variable to store current request's session info
-_current_session: ContextVar[Optional[Dict[str, Any]]] = ContextVar(
-    "current_session",
-    default=None
-)
+_current_session: ContextVar[dict[str, Any] | None] = ContextVar("current_session", default=None)
+
+# Context variable to store current request's Kamiwaza PAT token
+# Used by OAuth Broker provider for per-request authentication
+_current_request_token: ContextVar[str | None] = ContextVar("current_request_token", default=None)
 
 
-def set_current_session(session_data: Dict[str, Any]):
+def set_current_session(session_data: dict[str, Any]):
     """Set the current session data for this request context.
 
     Args:
@@ -24,7 +25,7 @@ def set_current_session(session_data: Dict[str, Any]):
     _current_session.set(session_data)
 
 
-def get_current_session() -> Optional[Dict[str, Any]]:
+def get_current_session() -> dict[str, Any] | None:
     """Get the current session data.
 
     Returns:
@@ -38,8 +39,31 @@ def clear_current_session():
     _current_session.set(None)
 
 
+def set_current_request_token(token: str):
+    """Set the current request's Kamiwaza PAT token.
+
+    Args:
+        token: Kamiwaza PAT token from Authorization header
+    """
+    _current_request_token.set(token)
+
+
+def get_current_request_token() -> str | None:
+    """Get the current request's Kamiwaza PAT token.
+
+    Returns:
+        PAT token string or None if not set
+    """
+    return _current_request_token.get()
+
+
+def clear_current_request_token():
+    """Clear the current request's PAT token."""
+    _current_request_token.set(None)
+
+
 @contextmanager
-def session_context(session_data: Optional[Dict[str, Any]]):
+def session_context(session_data: dict[str, Any] | None):
     """Context manager for setting session data.
 
     Args:

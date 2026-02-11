@@ -5,7 +5,7 @@ Supports multi-provider OAuth (Gmail, Outlook) and IMAP/SMTP with session-based 
 """
 
 import os
-from typing import List, Optional, Any, Dict
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -15,15 +15,14 @@ except ImportError:
     from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.requests import Request
-from starlette.responses import JSONResponse, HTMLResponse
+from starlette.responses import JSONResponse
 
-from .security import SecurityManager
-from .email_operations import EmailOperations
-from .session_manager import SessionManager
-from .oauth_handler import OAuthHandler
-from .middleware import SessionAuthMiddleware
 from .context import get_current_session
-from .providers_config import get_configured_providers, get_provider_display_info
+from .email_operations import EmailOperations
+from .oauth_handler import OAuthHandler
+from .providers_config import get_configured_providers
+from .security import SecurityManager
+from .session_manager import SessionManager
 
 load_dotenv()
 load_dotenv(".env.local")
@@ -45,15 +44,14 @@ oauth_handler = OAuthHandler(session_manager)
 oauth_broker_configured = all([
     os.getenv("KAMIWAZA_OAUTH_BROKER_URL"),
     os.getenv("KAMIWAZA_APP_INSTALLATION_ID"),
-    (os.getenv("KAMIWAZA_TOKEN_FILE") or os.getenv("KAMIWAZA_TOKEN"))
+    (os.getenv("KAMIWAZA_TOKEN_FILE") or os.getenv("KAMIWAZA_TOKEN")),
 ])
 
 # Check if IMAP credentials are configured via environment
-imap_configured = all([
-    os.getenv("IMAP_USERNAME"),
-    os.getenv("IMAP_PASSWORD"),
-    os.getenv("IMAP_SERVER")
-])
+imap_configured = all([os.getenv("IMAP_USERNAME"), os.getenv("IMAP_PASSWORD"), os.getenv("IMAP_SERVER")])
+
+# Get OAuth providers for fallback authentication
+oauth_providers = get_configured_providers()
 
 if oauth_broker_configured:
     print("🔐 OAuth Broker integration enabled")
@@ -66,7 +64,6 @@ if oauth_broker_configured:
 elif imap_configured:
     print("🔐 IMAP credentials configured via environment")
 else:
-    oauth_providers = get_configured_providers()
     if oauth_providers:
         print(f"🔐 OAuth enabled for: {', '.join(oauth_providers)}")
 
@@ -83,7 +80,8 @@ mcp = FastMCP(
 
 # ===== Helper Functions =====
 
-async def ensure_imap_configured() -> Dict[str, Any]:
+
+async def ensure_imap_configured() -> dict[str, Any]:
     """Configure email provider from environment if available.
 
     Checks for OAuth Broker configuration first, then IMAP.
@@ -102,7 +100,7 @@ async def ensure_imap_configured() -> Dict[str, Any]:
         config = {
             "oauth_broker_url": os.getenv("KAMIWAZA_OAUTH_BROKER_URL"),
             "app_installation_id": os.getenv("KAMIWAZA_APP_INSTALLATION_ID"),
-            "tool_id": os.getenv("KAMIWAZA_TOOL_ID", "email-mcp")
+            "tool_id": os.getenv("KAMIWAZA_TOOL_ID", "email-mcp"),
         }
 
         if token_file:
@@ -116,24 +114,27 @@ async def ensure_imap_configured() -> Dict[str, Any]:
 
     # Fall back to IMAP if configured
     if imap_configured:
-        result = await email_ops.configure_provider("imap", {
-            "username": os.getenv("IMAP_USERNAME"),
-            "password": os.getenv("IMAP_PASSWORD"),
-            "imap_server": os.getenv("IMAP_SERVER"),
-            "imap_port": os.getenv("IMAP_PORT", "993"),
-            "smtp_server": os.getenv("SMTP_SERVER", os.getenv("IMAP_SERVER")),
-            "smtp_port": os.getenv("SMTP_PORT", "465"),
-            "use_ssl": os.getenv("IMAP_USE_SSL", "true").lower() in ("true", "1", "yes")
-        })
+        result = await email_ops.configure_provider(
+            "imap",
+            {
+                "username": os.getenv("IMAP_USERNAME"),
+                "password": os.getenv("IMAP_PASSWORD"),
+                "imap_server": os.getenv("IMAP_SERVER"),
+                "imap_port": os.getenv("IMAP_PORT", "993"),
+                "smtp_server": os.getenv("SMTP_SERVER", os.getenv("IMAP_SERVER")),
+                "smtp_port": os.getenv("SMTP_PORT", "465"),
+                "use_ssl": os.getenv("IMAP_USE_SSL", "true").lower() in ("true", "1", "yes"),
+            },
+        )
         return result
 
     return {
         "success": False,
-        "error": "No email provider configured. Use configure_email_provider tool or set IMAP/OAuth Broker environment variables."
+        "error": "No email provider configured. Use configure_email_provider tool or set IMAP/OAuth Broker environment variables.",
     }
 
 
-async def require_authentication() -> Dict[str, Any]:
+async def require_authentication() -> dict[str, Any]:
     """Check if current request has valid authentication.
 
     Returns:
@@ -152,24 +153,25 @@ async def require_authentication() -> Dict[str, Any]:
             "success": False,
             "error": "Not authenticated. Please connect your email account.",
             "auth_required": True,
-            "auth_urls": {
-                provider: f"/oauth/authorize?provider={provider}"
-                for provider in oauth_providers
-            }
+            "auth_urls": {provider: f"/oauth/authorize?provider={provider}" for provider in oauth_providers},
         }
 
     # Configure email operations with session provider
-    await email_ops.configure_provider(session["provider"], {
-        "token": session["access_token"],
-        "refresh_token": None,  # No refresh token (security requirement)
-        "client_id": os.getenv(f"OAUTH_{session['provider'].upper()}_CLIENT_ID", ""),
-        "client_secret": os.getenv(f"OAUTH_{session['provider'].upper()}_CLIENT_SECRET", "")
-    })
+    await email_ops.configure_provider(
+        session["provider"],
+        {
+            "token": session["access_token"],
+            "refresh_token": None,  # No refresh token (security requirement)
+            "client_id": os.getenv(f"OAUTH_{session['provider'].upper()}_CLIENT_ID", ""),
+            "client_secret": os.getenv(f"OAUTH_{session['provider'].upper()}_CLIENT_SECRET", ""),
+        },
+    )
 
     return {"success": True}
 
 
 # ===== Health Check Endpoint =====
+
 
 @mcp.custom_route("/health", methods=["GET"])
 async def health_check(request: Request):
@@ -182,6 +184,7 @@ async def health_check(request: Request):
 
 
 # ===== OAuth Endpoints =====
+
 
 @mcp.custom_route("/oauth/authorize", methods=["GET"])
 async def oauth_authorize(request: Request):
@@ -220,7 +223,7 @@ async def oauth_status(request: Request):
             "authenticated": True,
             "provider": session.get("provider"),
             "email": session.get("user_email"),
-            "expires_at": session.get("expires_at")
+            "expires_at": session.get("expires_at"),
         })
 
     # Check if IMAP is configured
@@ -229,16 +232,13 @@ async def oauth_status(request: Request):
             "authenticated": True,
             "provider": "imap",
             "email": os.getenv("IMAP_USERNAME"),
-            "configured_via": "environment"
+            "configured_via": "environment",
         })
 
     return JSONResponse({
         "authenticated": False,
         "available_providers": list(oauth_providers),
-        "auth_urls": {
-            provider: f"/oauth/authorize?provider={provider}"
-            for provider in oauth_providers
-        }
+        "auth_urls": {provider: f"/oauth/authorize?provider={provider}" for provider in oauth_providers},
     })
 
 
@@ -255,19 +255,14 @@ async def oauth_logout(request: Request):
         if session_id:
             session_manager.delete_session(session_id)
 
-    return JSONResponse({
-        "success": True,
-        "message": "Logged out successfully"
-    })
+    return JSONResponse({"success": True, "message": "Logged out successfully"})
 
 
 # ===== MCP Tools =====
 
+
 @mcp.tool()
-async def configure_email_provider(
-    provider: str,
-    credentials: dict
-) -> Dict[str, Any]:
+async def configure_email_provider(provider: str, credentials: dict) -> dict[str, Any]:
     """Configure email provider with credentials.
 
     Args:
@@ -300,11 +295,7 @@ async def configure_email_provider(
 
 
 @mcp.tool()
-async def list_emails(
-    folder: str = "INBOX",
-    limit: int = 50,
-    page_token: Optional[str] = None
-) -> Dict[str, Any]:
+async def list_emails(folder: str = "INBOX", limit: int = 50, page_token: str | None = None) -> dict[str, Any]:
     """List emails in a folder.
 
     Args:
@@ -327,7 +318,7 @@ async def list_emails(
 
 
 @mcp.tool()
-async def read_email(message_id: str) -> Dict[str, Any]:
+async def read_email(message_id: str) -> dict[str, Any]:
     """Read full email content by ID.
 
     Args:
@@ -351,13 +342,13 @@ async def read_email(message_id: str) -> Dict[str, Any]:
 
 @mcp.tool()
 async def send_email(
-    to: List[str],
+    to: list[str],
     subject: str,
     body: str,
-    cc: Optional[List[str]] = None,
-    bcc: Optional[List[str]] = None,
-    html: bool = False
-) -> Dict[str, Any]:
+    cc: list[str] | None = None,
+    bcc: list[str] | None = None,
+    html: bool = False,
+) -> dict[str, Any]:
     """Send a new email.
 
     Args:
@@ -392,16 +383,13 @@ async def send_email(
     except ValueError as e:
         return {"success": False, "error": str(e)}
 
-    return await email_ops.send_email(validated_to, validated_subject, validated_body, validated_cc, validated_bcc, html)
+    return await email_ops.send_email(
+        validated_to, validated_subject, validated_body, validated_cc, validated_bcc, html
+    )
 
 
 @mcp.tool()
-async def reply_email(
-    message_id: str,
-    body: str,
-    reply_all: bool = False,
-    html: bool = False
-) -> Dict[str, Any]:
+async def reply_email(message_id: str, body: str, reply_all: bool = False, html: bool = False) -> dict[str, Any]:
     """Reply to an email.
 
     Args:
@@ -427,11 +415,7 @@ async def reply_email(
 
 
 @mcp.tool()
-async def forward_email(
-    message_id: str,
-    to: List[str],
-    comment: Optional[str] = None
-) -> Dict[str, Any]:
+async def forward_email(message_id: str, to: list[str], comment: str | None = None) -> dict[str, Any]:
     """Forward an email to new recipients.
 
     Args:
@@ -454,7 +438,7 @@ async def forward_email(
 
 
 @mcp.tool()
-async def delete_email(message_id: str) -> Dict[str, Any]:
+async def delete_email(message_id: str) -> dict[str, Any]:
     """Delete an email (move to trash).
 
     Args:
@@ -477,10 +461,7 @@ async def delete_email(message_id: str) -> Dict[str, Any]:
 
 
 @mcp.tool()
-async def mark_email_read(
-    message_id: str,
-    read: bool = True
-) -> Dict[str, Any]:
+async def mark_email_read(message_id: str, read: bool = True) -> dict[str, Any]:
     """Mark an email as read or unread.
 
     Args:
@@ -504,10 +485,7 @@ async def mark_email_read(
 
 
 @mcp.tool()
-async def search_emails(
-    query: str,
-    limit: int = 50
-) -> Dict[str, Any]:
+async def search_emails(query: str, limit: int = 50) -> dict[str, Any]:
     """Search emails using provider-specific query syntax.
 
     Args:
@@ -534,7 +512,7 @@ async def search_emails(
 
 
 @mcp.tool()
-async def get_folders() -> Dict[str, Any]:
+async def get_folders() -> dict[str, Any]:
     """Get list of available email folders/labels.
 
     Returns:
@@ -555,14 +533,11 @@ app = mcp.streamable_http_app()
 
 if __name__ == "__main__":
     import uvicorn
+
     port = int(os.getenv("PORT", 8000))
 
     # Note: Session cleanup task not started for IMAP-only mode
     # OAuth sessions will be cleaned up on restart
 
     # Run with uvicorn
-    uvicorn.run(
-        "tool_email_mcp.server:app",
-        host="0.0.0.0",
-        port=port
-    )
+    uvicorn.run("tool_email_mcp.server:app", host="0.0.0.0", port=port)  # noqa: S104

@@ -5,13 +5,15 @@ and refresh. The tool never handles OAuth tokens directly - all token operations
 are managed by the OAuth Broker service.
 """
 
-import os
 import base64
 import json
+import logging
+import os
+from typing import Any
+
 import requests
 import urllib3
-import logging
-from typing import Dict, List, Optional, Any
+
 from .providers import EmailProvider
 
 # Disable SSL warnings for self-signed certificates
@@ -29,7 +31,7 @@ KEYCLOAK_TOKEN_ENDPOINT = f"{KAMIWAZA_URL}/realms/kamiwaza/protocol/openid-conne
 class OAuthBrokerProvider(EmailProvider):
     """Email provider that uses Kamiwaza OAuth Broker as proxy to Gmail."""
 
-    def __init__(self, credentials_dict: Dict[str, str]):
+    def __init__(self, credentials_dict: dict[str, str]):
         """Initialize OAuth Broker provider.
 
         Args:
@@ -49,14 +51,10 @@ class OAuthBrokerProvider(EmailProvider):
         self.tool_id = credentials_dict.get("tool_id", "email-mcp")
 
         if not (self.token_file or self.static_token):
-            raise ValueError(
-                "OAuth Broker provider requires either kamiwaza_token_file or kamiwaza_token"
-            )
+            raise ValueError("OAuth Broker provider requires either kamiwaza_token_file or kamiwaza_token")
 
         if not all([self.broker_url, self.app_id]):
-            raise ValueError(
-                "OAuth Broker provider requires oauth_broker_url and app_installation_id"
-            )
+            raise ValueError("OAuth Broker provider requires oauth_broker_url and app_installation_id")
 
         # Remove trailing slash from broker URL
         self.broker_url = self.broker_url.rstrip("/")
@@ -78,7 +76,7 @@ class OAuthBrokerProvider(EmailProvider):
         """
         try:
             # Decode JWT payload (second part)
-            parts = token.split('.')
+            parts = token.split(".")
             if len(parts) != 3:
                 return False
 
@@ -87,13 +85,13 @@ class OAuthBrokerProvider(EmailProvider):
             # Add padding if needed
             padding = 4 - len(payload_b64) % 4
             if padding != 4:
-                payload_b64 += '=' * padding
+                payload_b64 += "=" * padding
 
-            payload_json = base64.urlsafe_b64decode(payload_b64).decode('utf-8')
+            payload_json = base64.urlsafe_b64decode(payload_b64).decode("utf-8")
             payload = json.loads(payload_json)
 
             # Check token type
-            return payload.get('typ') == 'Offline'
+            return payload.get("typ") == "Offline"
         except Exception as e:
             logger.warning(f"Could not decode token to check type: {e}")
             return False
@@ -113,14 +111,10 @@ class OAuthBrokerProvider(EmailProvider):
         try:
             response = requests.post(
                 KEYCLOAK_TOKEN_ENDPOINT,
-                data={
-                    "grant_type": "refresh_token",
-                    "client_id": "kamiwaza-platform",
-                    "refresh_token": refresh_token
-                },
+                data={"grant_type": "refresh_token", "client_id": "kamiwaza-platform", "refresh_token": refresh_token},
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
                 timeout=10,
-                verify=False  # Self-signed cert
+                verify=False,  # noqa: S501 Self-signed cert in development
             )
 
             if response.status_code != 200:
@@ -134,11 +128,11 @@ class OAuthBrokerProvider(EmailProvider):
                 raise ConnectionError("No access_token in token exchange response")
 
             logger.debug(f"✅ Exchanged refresh token for access token (expires in {token_data.get('expires_in')}s)")
-            return access_token
+            return access_token  # noqa: TRY300
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"❌ Token exchange request failed: {e}")
-            raise ConnectionError(f"Token exchange failed: {e}")
+            logger.exception("❌ Token exchange request failed")
+            raise ConnectionError("Token exchange failed: ") from e
 
     def _get_token(self) -> str:
         """Get current Kamiwaza access token.
@@ -152,10 +146,10 @@ class OAuthBrokerProvider(EmailProvider):
         """
         if self.token_file:
             try:
-                with open(self.token_file, "r") as f:
+                with open(self.token_file) as f:
                     token = f.read().strip()
                     if not token:
-                        raise ValueError(f"Token file {self.token_file} is empty")
+                        raise ValueError(f"Token file {self.token_file} is empty")  # noqa: TRY301
 
                     # Check if it's a refresh token and exchange if needed
                     if self._is_refresh_token(token):
@@ -164,11 +158,11 @@ class OAuthBrokerProvider(EmailProvider):
 
                     return token
             except FileNotFoundError:
-                logger.error(f"❌ Token file not found: {self.token_file}")
-                raise ConnectionError(f"Token file not found: {self.token_file}")
+                logger.exception(f"❌ Token file not found: {self.token_file}")
+                raise ConnectionError(f"Token file not found: {self.token_file}") from None
             except Exception as e:
-                logger.error(f"❌ Error reading token file {self.token_file}: {e}")
-                raise ConnectionError(f"Error reading token file: {e}")
+                logger.exception("❌ Error reading token file {self.token_file}")
+                raise ConnectionError("Error reading token file: ") from e
         else:
             # Static token - check if it's a refresh token
             if self._is_refresh_token(self.static_token):
@@ -177,7 +171,7 @@ class OAuthBrokerProvider(EmailProvider):
 
             return self.static_token
 
-    def _extract_body(self, payload: Dict[str, Any]) -> str:
+    def _extract_body(self, payload: dict[str, Any]) -> str:
         """Extract email body from Gmail payload structure.
 
         Args:
@@ -212,7 +206,7 @@ class OAuthBrokerProvider(EmailProvider):
 
         return body
 
-    def _proxy_call(self, endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _proxy_call(self, endpoint: str, data: dict[str, Any]) -> dict[str, Any]:  # noqa: C901
         """Make proxy call to OAuth Broker.
 
         Args:
@@ -230,10 +224,7 @@ class OAuthBrokerProvider(EmailProvider):
         token = self._get_token()
 
         url = f"{self.broker_url}/proxy/google/gmail/{endpoint}"
-        params = {
-            "app_id": self.app_id,
-            "tool_id": self.tool_id
-        }
+        params = {"app_id": self.app_id, "tool_id": self.tool_id}
 
         # INSECURE DEBUG LOGGING
         logger.error("=" * 70)
@@ -246,10 +237,7 @@ class OAuthBrokerProvider(EmailProvider):
         logger.error("-" * 70)
 
         # Use full token for actual request
-        real_headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        }
+        real_headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
         try:
             response = requests.post(
@@ -258,7 +246,7 @@ class OAuthBrokerProvider(EmailProvider):
                 json=data,
                 headers=real_headers,
                 timeout=30,
-                verify=False  # Disable SSL verification for self-signed certificates
+                verify=False,  # noqa: S501 Disable SSL verification for self-signed certificates
             )
 
             logger.error(f"📥 Response Status: {response.status_code}")
@@ -267,16 +255,35 @@ class OAuthBrokerProvider(EmailProvider):
             try:
                 response_json = response.json()
                 logger.error(f"📥 Response Body: {response_json}")
-            except:
-                logger.error(f"📥 Response Text: {response.text[:500]}")
+            except Exception:  # Intentionally catch all JSON parsing errors
+                logger.exception(f"📥 Response Text: {response.text[:500]}")
 
             # Handle authentication errors
             if response.status_code == 401:
                 logger.error("❌ 401 UNAUTHORIZED from OAuth Broker")
-                raise ConnectionError(
-                    "Not authenticated with Google. Please connect your Google account "
-                    "in the Kamiwaza OAuth settings."
+
+                # Construct helpful error message for LLMs and users
+                kamiwaza_url = os.getenv("KAMIWAZA_URL", "https://localhost")
+                auth_url = f"{kamiwaza_url}/api/oauth-broker/google/start?app_id={self.app_id}"
+
+                error_msg = (
+                    "🔐 GOOGLE ACCOUNT NOT CONNECTED\n\n"
+                    "Your Google account is not connected to this Kamiwaza app installation. "
+                    "To use email features, you need to authenticate with Google.\n\n"
+                    "📋 STEPS TO FIX:\n"
+                    "1. Visit the authentication URL below in your browser\n"
+                    "2. Sign in with your Google account\n"
+                    "3. Review and approve the requested Gmail permissions\n"
+                    "4. You'll be redirected back to Kamiwaza when complete\n\n"
+                    f"🔗 AUTHENTICATION URL:\n{auth_url}\n\n"
+                    "🔒 REQUIRED PERMISSIONS:\n"
+                    "- gmail.readonly (read emails and settings)\n"
+                    "- gmail.send (send emails)\n"
+                    "- gmail.modify (mark as read/unread, apply labels)\n\n"
+                    "Once connected, this tool will automatically use your Google account "
+                    "for all email operations."
                 )
+                raise ConnectionError(error_msg)  # noqa: TRY301
 
             # Handle insufficient scope errors (500 with Gmail 401)
             if response.status_code == 500:
@@ -289,6 +296,11 @@ class OAuthBrokerProvider(EmailProvider):
                         logger.error("=" * 70)
                         logger.error(f"Operation '{endpoint}' requires additional Gmail permissions.")
                         logger.error("")
+
+                        # Construct helpful scope error message
+                        kamiwaza_url = os.getenv("KAMIWAZA_URL", "https://localhost")
+                        disconnect_url = f"{kamiwaza_url}/api/oauth-broker/connections/disconnect?app_id={self.app_id}&provider=google"
+                        reconnect_url = f"{kamiwaza_url}/api/oauth-broker/google/start?app_id={self.app_id}"
 
                         # Provide specific guidance based on endpoint
                         if endpoint == "send":
@@ -310,15 +322,76 @@ class OAuthBrokerProvider(EmailProvider):
 
                         logger.error("CURRENT OPERATION FAILED:")
                         logger.error(f"  Endpoint: {endpoint}")
-                        logger.error(f"  This requires permissions that weren't granted during initial connection.")
+                        logger.error("  This requires permissions that weren't granted during initial connection.")
                         logger.error("=" * 70)
 
-                        # Create user-friendly error message for AI
+                        # Create comprehensive, LLM-friendly error message
+                        scope_requirements = {
+                            "send": ("gmail.send", "send emails on your behalf"),
+                            "labels": ("gmail.modify", "modify email labels and settings"),
+                            "trash": ("gmail.modify", "move emails to trash"),
+                            "modify": ("gmail.modify", "modify email properties"),
+                        }
+
+                        scope_info = scope_requirements.get(endpoint, ("gmail.modify", "perform this operation"))
+                        required_scope, operation_desc = scope_info
+
+                        error_msg = (
+                            f"🔒 INSUFFICIENT GMAIL PERMISSIONS\n\n"
+                            f"The operation '{endpoint}' requires a Gmail permission that wasn't granted "
+                            f"when you connected your Google account.\n\n"
+                            f"📋 MISSING PERMISSION:\n"
+                            f"- Scope: {required_scope}\n"
+                            f"- Allows: {operation_desc}\n\n"
+                            f"📋 STEPS TO FIX:\n"
+                            f"1. Disconnect your Google account:\n"
+                            f"   {disconnect_url}\n\n"
+                            f"2. Reconnect with expanded permissions:\n"
+                            f"   {reconnect_url}\n\n"
+                            f"3. When prompted by Google, make sure to approve ALL requested permissions\n\n"
+                            f"💡 TIP: To avoid this issue, grant all Gmail permissions during initial connection:\n"
+                            f"- gmail.readonly (read emails)\n"
+                            f"- gmail.send (send emails)\n"
+                            f"- gmail.modify (organize and manage emails)\n\n"
+                            f"Once reconnected with the required permissions, this operation will work automatically."
+                        )
+
+                        if endpoint == "send":
+                            error_msg = (
+                                "🔒 INSUFFICIENT GMAIL PERMISSIONS\n\n"
+                                "The operation 'send' requires a Gmail permission that wasn't granted "
+                                "when you connected your Google account.\n\n"
+                                "📋 MISSING PERMISSION:\n"
+                                "- Scope: gmail.send\n"
+                                "- Allows: send emails on your behalf\n\n"
+                                "📋 STEPS TO FIX:\n"
+                                f"1. Disconnect your Google account:\n"
+                                f"   {disconnect_url}\n\n"
+                                f"2. Reconnect with expanded permissions:\n"
+                                f"   {reconnect_url}\n\n"
+                                "3. When prompted by Google, make sure to approve the 'Send email' permission\n\n"
+                                "💡 TIP: Grant all Gmail permissions to avoid future issues."
+                            )
+                        elif endpoint in ["labels", "trash", "modify"]:
+                            error_msg = (
+                                f"🔒 INSUFFICIENT GMAIL PERMISSIONS\n\n"
+                                f"The operation '{endpoint}' requires the 'gmail.modify' permission which allows "
+                                f"organizing and managing your emails (labels, read/unread status, trash, etc.).\n\n"
+                                f"📋 STEPS TO FIX:\n"
+                                f"1. Disconnect your Google account:\n"
+                                f"   {disconnect_url}\n\n"
+                                f"2. Reconnect with expanded permissions:\n"
+                                f"   {reconnect_url}\n\n"
+                                "3. When prompted by Google, approve the 'Modify email' permission\n\n"
+                                "💡 TIP: The modify permission is safe - it only allows organizing emails, not deleting permanently."
+                            )
+
+                        logger.error(error_msg)
+
                         if endpoint == "send":
                             error_msg = (
                                 "❌ Cannot send emails: Missing Gmail permission 'gmail.send'. "
-                                "USER ACTION REQUIRED: Go to Kamiwaza UI → Settings → External Connectors, "
-                                "disconnect Google Workspace, then reconnect and grant 'Send email' permission."
+                                "RECONNECT REQUIRED: Visit the disconnect URL above, then reconnect with 'Send email' permission."
                             )
                         elif endpoint in ["labels", "trash"]:
                             error_msg = (
@@ -332,11 +405,11 @@ class OAuthBrokerProvider(EmailProvider):
                                 "USER ACTION REQUIRED: Reconnect Google account with broader permissions."
                             )
 
-                        raise ConnectionError(error_msg)
+                        raise ConnectionError(error_msg)  # noqa: TRY301
                 except ConnectionError:
                     raise  # Re-raise our helpful error message
-                except:
-                    pass  # Fall through to generic error handling for JSON parsing errors
+                except Exception:  # noqa: S110 Intentionally catch all JSON parsing errors
+                    pass  # Fall through to generic error handling
 
             response.raise_for_status()
             logger.error("✅ Request successful")
@@ -344,33 +417,26 @@ class OAuthBrokerProvider(EmailProvider):
             return response.json()
 
         except requests.exceptions.ConnectionError as e:
-            logger.error(f"❌ Connection error: {e}")
-            logger.error("=" * 70)
-            raise ConnectionError(f"Cannot connect to OAuth Broker: {e}")
+            logger.exception("❌ Connection error")
+            logger.exception("=" * 70)
+            raise ConnectionError("Cannot connect to OAuth Broker") from e
         except requests.exceptions.Timeout:
-            logger.error("❌ Timeout error")
-            logger.error("=" * 70)
-            raise ConnectionError("OAuth Broker request timed out")
-        except Exception as e:
-            logger.error(f"❌ Unexpected error: {type(e).__name__}: {e}")
-            logger.error("=" * 70)
+            logger.exception("❌ Timeout error")
+            logger.exception("=" * 70)
+            raise ConnectionError("OAuth Broker request timed out") from None
+        except Exception:
+            logger.exception("❌ Unexpected error")
+            logger.exception("=" * 70)
             raise
 
     async def list_emails(
-        self,
-        folder: str = "INBOX",
-        limit: int = 50,
-        page_token: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, folder: str = "INBOX", limit: int = 50, page_token: str | None = None
+    ) -> dict[str, Any]:
         """List emails in folder."""
         try:
             # Use Gmail search API through OAuth Broker
             label_query = f"in:{folder.lower()}"
-            data = {
-                "query": label_query,
-                "max_results": min(limit, 500),
-                "page_token": page_token
-            }
+            data = {"query": label_query, "max_results": min(limit, 500), "page_token": page_token}
 
             result = self._proxy_call("search", data)
 
@@ -382,11 +448,14 @@ class OAuthBrokerProvider(EmailProvider):
 
             for msg in messages:
                 # Get message details
-                msg_data = self._proxy_call("getMessage", {
-                    "message_id": msg["id"],
-                    "format": "metadata",
-                    "metadata_headers": ["From", "To", "Subject", "Date"]
-                })
+                msg_data = self._proxy_call(
+                    "getMessage",
+                    {
+                        "message_id": msg["id"],
+                        "format": "metadata",
+                        "metadata_headers": ["From", "To", "Subject", "Date"],
+                    },
+                )
 
                 # Extract headers from Gmail API format
                 headers_list = msg_data.get("payload", {}).get("headers", [])
@@ -405,7 +474,7 @@ class OAuthBrokerProvider(EmailProvider):
                 "success": True,
                 "emails": emails,
                 "count": len(emails),
-                "next_page_token": result.get("next_page_token")
+                "next_page_token": result.get("next_page_token"),
             }
 
         except ConnectionError as e:
@@ -413,13 +482,10 @@ class OAuthBrokerProvider(EmailProvider):
         except Exception as e:
             return {"success": False, "error": f"Error listing emails: {e}"}
 
-    async def read_email(self, message_id: str) -> Dict[str, Any]:
+    async def read_email(self, message_id: str) -> dict[str, Any]:
         """Read email by ID."""
         try:
-            result = self._proxy_call("getMessage", {
-                "message_id": message_id,
-                "format": "full"
-            })
+            result = self._proxy_call("getMessage", {"message_id": message_id, "format": "full"})
 
             # Extract headers from Gmail API format
             headers_list = result.get("payload", {}).get("headers", [])
@@ -437,7 +503,7 @@ class OAuthBrokerProvider(EmailProvider):
                 "subject": headers.get("Subject", ""),
                 "date": headers.get("Date", ""),
                 "body": body,
-                "labels": result.get("labelIds", [])
+                "labels": result.get("labelIds", []),
             }
 
         except ConnectionError as e:
@@ -447,13 +513,13 @@ class OAuthBrokerProvider(EmailProvider):
 
     async def send_email(
         self,
-        to: List[str],
+        to: list[str],
         subject: str,
         body: str,
-        cc: Optional[List[str]] = None,
-        bcc: Optional[List[str]] = None,
-        html: bool = False
-    ) -> Dict[str, Any]:
+        cc: list[str] | None = None,
+        bcc: list[str] | None = None,
+        html: bool = False,
+    ) -> dict[str, Any]:
         """Send email."""
         try:
             # Construct MIME message
@@ -475,11 +541,7 @@ class OAuthBrokerProvider(EmailProvider):
             if not result.get("success"):
                 return result
 
-            return {
-                "success": True,
-                "message_id": result.get("id"),
-                "thread_id": result.get("threadId")
-            }
+            return {"success": True, "message_id": result.get("id"), "thread_id": result.get("threadId")}
 
         except ConnectionError as e:
             return {"success": False, "error": str(e)}
@@ -487,20 +549,19 @@ class OAuthBrokerProvider(EmailProvider):
             return {"success": False, "error": f"Error sending email: {e}"}
 
     async def reply_email(
-        self,
-        message_id: str,
-        body: str,
-        reply_all: bool = False,
-        html: bool = False
-    ) -> Dict[str, Any]:
+        self, message_id: str, body: str, reply_all: bool = False, html: bool = False
+    ) -> dict[str, Any]:
         """Reply to email."""
         try:
             # Get original message to build reply
-            original = self._proxy_call("getMessage", {
-                "message_id": message_id,
-                "format": "metadata",
-                "metadata_headers": ["From", "To", "Cc", "Subject", "Message-ID"]
-            })
+            original = self._proxy_call(
+                "getMessage",
+                {
+                    "message_id": message_id,
+                    "format": "metadata",
+                    "metadata_headers": ["From", "To", "Cc", "Subject", "Message-ID"],
+                },
+            )
 
             if not original.get("success"):
                 return original
@@ -524,59 +585,38 @@ class OAuthBrokerProvider(EmailProvider):
             # Encode for Gmail API
             raw = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
 
-            result = self._proxy_call("send", {
-                "raw_message": raw,
-                "thread_id": original.get("threadId")
-            })
+            result = self._proxy_call("send", {"raw_message": raw, "thread_id": original.get("threadId")})
 
             if not result.get("success"):
                 return result
 
-            return {
-                "success": True,
-                "message_id": result.get("id"),
-                "thread_id": result.get("threadId")
-            }
+            return {"success": True, "message_id": result.get("id"), "thread_id": result.get("threadId")}
 
         except ConnectionError as e:
             return {"success": False, "error": str(e)}
         except Exception as e:
             return {"success": False, "error": f"Error replying to email: {e}"}
 
-    async def delete_email(self, message_id: str) -> Dict[str, Any]:
+    async def delete_email(self, message_id: str) -> dict[str, Any]:
         """Delete email (move to trash)."""
         try:
             # Use Gmail labels API to trash the message
-            result = self._proxy_call("labels", {
-                "message_id": message_id,
-                "action": "trash"
-            })
+            result = self._proxy_call("labels", {"message_id": message_id, "action": "trash"})
 
             if not result.get("success"):
                 return result
 
-            return {
-                "success": True,
-                "message_id": message_id,
-                "status": "trashed"
-            }
+            return {"success": True, "message_id": message_id, "status": "trashed"}  # noqa: TRY300
 
         except ConnectionError as e:
             return {"success": False, "error": str(e)}
         except Exception as e:
             return {"success": False, "error": f"Error deleting email: {e}"}
 
-    async def search_emails(
-        self,
-        query: str,
-        limit: int = 50
-    ) -> Dict[str, Any]:
+    async def search_emails(self, query: str, limit: int = 50) -> dict[str, Any]:
         """Search emails."""
         try:
-            result = self._proxy_call("search", {
-                "query": query,
-                "max_results": min(limit, 500)
-            })
+            result = self._proxy_call("search", {"query": query, "max_results": min(limit, 500)})
 
             if not result.get("success"):
                 return result
@@ -586,11 +626,10 @@ class OAuthBrokerProvider(EmailProvider):
 
             for msg in messages:
                 # Get message metadata
-                msg_data = self._proxy_call("getMessage", {
-                    "message_id": msg["id"],
-                    "format": "metadata",
-                    "metadata_headers": ["From", "Subject", "Date"]
-                })
+                msg_data = self._proxy_call(
+                    "getMessage",
+                    {"message_id": msg["id"], "format": "metadata", "metadata_headers": ["From", "Subject", "Date"]},
+                )
 
                 if msg_data.get("success"):
                     headers = msg_data.get("headers", {})
@@ -599,37 +638,26 @@ class OAuthBrokerProvider(EmailProvider):
                         "from": headers.get("From", ""),
                         "subject": headers.get("Subject", ""),
                         "date": headers.get("Date", ""),
-                        "snippet": msg_data.get("snippet", "")
+                        "snippet": msg_data.get("snippet", ""),
                     })
 
-            return {
-                "success": True,
-                "emails": emails,
-                "count": len(emails)
-            }
+            return {"success": True, "emails": emails, "count": len(emails)}
 
         except ConnectionError as e:
             return {"success": False, "error": str(e)}
         except Exception as e:
             return {"success": False, "error": f"Error searching emails: {e}"}
 
-    async def mark_read(self, message_id: str, read: bool = True) -> Dict[str, Any]:
+    async def mark_read(self, message_id: str, read: bool = True) -> dict[str, Any]:
         """Mark email as read/unread."""
         try:
             action = "remove_unread" if read else "add_unread"
-            result = self._proxy_call("labels", {
-                "message_id": message_id,
-                "action": action
-            })
+            result = self._proxy_call("labels", {"message_id": message_id, "action": action})
 
             if not result.get("success"):
                 return result
 
-            return {
-                "success": True,
-                "message_id": message_id,
-                "status": "read" if read else "unread"
-            }
+            return {"success": True, "message_id": message_id, "status": "read" if read else "unread"}  # noqa: TRY300
 
         except ConnectionError as e:
             return {"success": False, "error": str(e)}

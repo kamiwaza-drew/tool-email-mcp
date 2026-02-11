@@ -19,9 +19,7 @@ from .providers import EmailProvider
 # Disable SSL warnings for self-signed certificates
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Enable DEBUG logging for troubleshooting
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 # Keycloak token endpoint (use KAMIWAZA_URL from env, fallback to localhost)
 KAMIWAZA_URL = os.getenv("KAMIWAZA_URL", "https://localhost")
@@ -150,20 +148,22 @@ class OAuthBrokerProvider(EmailProvider):
         Returns:
             Current access token string
         """
+        logger.debug("Retrieving authentication token")
+
         # Try request context first (per-request token from MCP bridge)
         try:
             from .context import get_current_request_token
 
             request_token = get_current_request_token()
             if request_token:
-                logger.debug("Using per-request token from Authorization header")
+                logger.debug("Using per-request token from context")
                 # Check if it's a refresh token and exchange if needed
                 if self._is_refresh_token(request_token):
-                    logger.debug("Request token is a refresh token, exchanging...")
+                    logger.debug("Exchanging refresh token for access token")
                     return self._exchange_refresh_token(request_token)
                 return request_token
         except Exception as e:
-            logger.debug("No request token available: %s", e)
+            logger.debug("Could not retrieve request token: %s", str(e))
 
         # Fall back to token file (dynamic refresh)
         if self.token_file:
@@ -173,22 +173,22 @@ class OAuthBrokerProvider(EmailProvider):
                     if not token:
                         raise ValueError(f"Token file {self.token_file} is empty")  # noqa: TRY301
 
+                    logger.debug("Using token from file: %s", self.token_file)
                     # Check if it's a refresh token and exchange if needed
                     if self._is_refresh_token(token):
-                        logger.debug("Detected refresh token, exchanging for access token...")
+                        logger.debug("Exchanging refresh token for access token")
                         return self._exchange_refresh_token(token)
 
                     return token
             except FileNotFoundError:
-                logger.exception("Token file not found: %s", self.token_file)
                 raise ConnectionError(f"Token file not found: {self.token_file}") from None
             except Exception as e:
-                logger.exception("Error reading token file %s", self.token_file)
-                raise ConnectionError("Error reading token file: ") from e
+                raise ConnectionError("Error reading token file") from e
         else:
+            logger.debug("Using static token from configuration")
             # Static token - check if it's a refresh token
             if self._is_refresh_token(self.static_token):
-                logger.debug("Static token is a refresh token, exchanging for access token...")
+                logger.debug("Exchanging refresh token for access token")
                 return self._exchange_refresh_token(self.static_token)
 
             return self.static_token

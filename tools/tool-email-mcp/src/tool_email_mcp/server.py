@@ -146,6 +146,34 @@ async def require_authentication() -> dict[str, Any]:
     if imap_result.get("success"):
         return {"success": True}
 
+    # Check if there's a per-request token in context (for OAuth Broker)
+    from .context import get_current_deployment_id, get_current_request_host, get_current_request_token
+
+    request_token = get_current_request_token()
+    request_host = get_current_request_host()
+    deployment_id = get_current_deployment_id()
+
+    if request_token:
+        # Configure OAuth Broker provider on-demand with the request token
+        # From inside Docker, use gateway IP to reach host
+        # 172.17.0.1 is the Docker bridge gateway (host machine)
+        oauth_broker_base = os.getenv("KAMIWAZA_URL")
+        if not oauth_broker_base:
+            # If forwarded host is localhost, use Docker gateway IP
+            if request_host and "localhost" in request_host:
+                oauth_broker_base = "https://172.17.0.1"
+            else:
+                oauth_broker_base = request_host or "https://172.17.0.1"
+
+        config = {
+            "kamiwaza_token": request_token,  # Use request token directly
+            "oauth_broker_url": f"{oauth_broker_base}/api/oauth-broker",
+            "app_installation_id": deployment_id or os.getenv("KAMIWAZA_APP_INSTALLATION_ID", "PLACEHOLDER"),
+            "tool_id": os.getenv("KAMIWAZA_TOOL_ID", "email-mcp"),
+        }
+        result = await email_ops.configure_provider("oauth-broker", config)
+        return result
+
     # Fall back to session-based OAuth
     session = get_current_session()
 

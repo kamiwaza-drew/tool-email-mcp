@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Sensitive files
+.env
+.env.local
+.env.gmail
+.env.imap
+*_credentials.json
+*_token.json
+gmail_credentials.json
+gmail_token.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+test_*.py
+simple_test.py
+
+# Docker
+docker-compose.yml.tmp
+docker-compose.*.yml
+
+# Setup files
+setup_requirements.txt
+get_gmail_token.py

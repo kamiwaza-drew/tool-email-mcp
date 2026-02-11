@@ -1,0 +1,180 @@
+{
+  "name": "tool-email-mcp",
+  "version": "1.0.2",
+  "kamiwaza_version": ">=0.9.0",
+  "source_type": "kamiwaza",
+  "visibility": "public",
+  "description": "Secure email operations tool supporting OAuth (Gmail/Outlook), IMAP, and POP3. Read, send, reply, forward, and search emails with federal-standard security controls.",
+  "category": "communication",
+  "tags": [
+    "tool",
+    "email",
+    "gmail",
+    "outlook",
+    "imap",
+    "pop3",
+    "communication",
+    "oauth"
+  ],
+  "author": "Kamiwaza",
+  "license": "MIT",
+  "image": "kamiwazaai/tool-email-mcp",
+  "risk_tier": 1,
+  "verified": false,
+  "capabilities": [
+    "email_read",
+    "email_write",
+    "email_search",
+    "oauth_authentication",
+    "imap_support",
+    "pop3_support"
+  ],
+  "required_env_vars": [],
+  "env_defaults": {
+    "PORT": "8000",
+    "MCP_PORT": "8000",
+    "MCP_PATH": "/mcp"
+  },
+  "optional_env_vars": {
+    "IMAP_USERNAME": {
+      "description": "Email address for IMAP authentication",
+      "required": false,
+      "default": "your-email@example.com",
+      "url": null
+    },
+    "IMAP_PASSWORD": {
+      "description": "Password for IMAP authentication",
+      "required": false,
+      "default": null,
+      "url": null
+    },
+    "IMAP_SERVER": {
+      "description": "IMAP server hostname (e.g., mail.example.com, imap.gmail.com)",
+      "required": false,
+      "default": "imap.gmail.com",
+      "url": null
+    },
+    "IMAP_PORT": {
+      "description": "IMAP port (993 for SSL, 143 for non-SSL)",
+      "required": false,
+      "default": "993",
+      "url": null
+    },
+    "SMTP_SERVER": {
+      "description": "SMTP server hostname (e.g., smtp.gmail.com)",
+      "required": false,
+      "default": "smtp.gmail.com",
+      "url": null
+    },
+    "SMTP_PORT": {
+      "description": "SMTP port (465 for SSL, 587 for STARTTLS)",
+      "required": false,
+      "default": "587",
+      "url": null
+    },
+    "IMAP_USE_SSL": {
+      "description": "Use SSL for IMAP connection",
+      "required": false,
+      "default": "true",
+      "url": null
+    },
+    "POP3_USERNAME": {
+      "description": "Email address for POP3 authentication",
+      "required": false,
+      "default": "your-email@gmail.com",
+      "url": null
+    },
+    "POP3_PASSWORD": {
+      "description": "Gmail App Password (requires 2-Factor Authentication)",
+      "required": false,
+      "default": "xxxx xxxx xxxx xxxx",
+      "url": "https://myaccount.google.com/apppasswords"
+    },
+    "POP3_SERVER": {
+      "description": "POP3 server hostname",
+      "required": false,
+      "default": "pop.gmail.com",
+      "url": null
+    },
+    "POP3_PORT": {
+      "description": "POP3 port (995 for SSL)",
+      "required": false,
+      "default": "995",
+      "url": null
+    },
+    "SMTP_USE_STARTTLS": {
+      "description": "Use STARTTLS for SMTP (Gmail requires true)",
+      "required": false,
+      "default": "true",
+      "url": null
+    },
+    "OAUTH_GMAIL_CLIENT_ID": {
+      "description": "OAuth 2.0 client ID for Gmail API",
+      "required": false,
+      "default": null,
+      "url": "https://console.cloud.google.com/apis/credentials"
+    },
+    "OAUTH_GMAIL_CLIENT_SECRET": {
+      "description": "OAuth 2.0 client secret for Gmail API",
+      "required": false,
+      "default": null,
+      "url": "https://console.cloud.google.com/apis/credentials"
+    },
+    "OAUTH_OUTLOOK_CLIENT_ID": {
+      "description": "OAuth 2.0 client ID for Microsoft 365",
+      "required": false,
+      "default": null,
+      "url": "https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps"
+    },
+    "OAUTH_OUTLOOK_CLIENT_SECRET": {
+      "description": "OAuth 2.0 client secret for Microsoft 365",
+      "required": false,
+      "default": null,
+      "url": "https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps"
+    },
+    "OAUTH_OUTLOOK_TENANT_ID": {
+      "description": "Azure AD tenant ID (use 'common' for multi-tenant)",
+      "required": false,
+      "default": "common",
+      "url": null
+    },
+    "SESSION_TIMEOUT": {
+      "description": "Session timeout in seconds",
+      "required": false,
+      "default": "3600",
+      "url": null
+    },
+    "SESSION_SECRET": {
+      "description": "Secret key for session encryption (auto-generated if not set)",
+      "required": false,
+      "default": null,
+      "url": null
+    }
+  },
+  "configuration_examples": {
+    "gmail_pop3": {
+      "description": "Gmail with POP3 (requires App Password)",
+      "env_vars": {
+        "POP3_USERNAME": "your-email@gmail.com",
+        "POP3_PASSWORD": "your-app-password",
+        "POP3_SERVER": "pop.gmail.com",
+        "POP3_PORT": "995",
+        "SMTP_SERVER": "smtp.gmail.com",
+        "SMTP_PORT": "587",
+        "SMTP_USE_STARTTLS": "true"
+      }
+    },
+    "generic_imap": {
+      "description": "Generic IMAP/SMTP server",
+      "env_vars": {
+        "IMAP_USERNAME": "your-email@example.com",
+        "IMAP_PASSWORD": "your-password",
+        "IMAP_SERVER": "mail.example.com",
+        "IMAP_PORT": "993",
+        "SMTP_SERVER": "mail.example.com",
+        "SMTP_PORT": "465",
+        "IMAP_USE_SSL": "true"
+      }
+    }
+  }
+}

@@ -1,0 +1,50 @@
+version: "3.8"
+
+services:
+  tool-email-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kamiwazaai/tool-email-mcp:1.0.2
+    ports:
+      - "8000"
+    environment:
+      - PORT=8000
+      - MCP_PORT=8000
+      - MCP_PATH=/mcp
+      # IMAP/SMTP credentials
+      - IMAP_USERNAME=${IMAP_USERNAME:-}
+      - IMAP_PASSWORD=${IMAP_PASSWORD:-}
+      - IMAP_SERVER=${IMAP_SERVER:-}
+      - IMAP_PORT=${IMAP_PORT:-993}
+      - SMTP_SERVER=${SMTP_SERVER:-}
+      - SMTP_PORT=${SMTP_PORT:-465}
+      - IMAP_USE_SSL=${IMAP_USE_SSL:-true}
+      # POP3/SMTP credentials
+      - POP3_USERNAME=${POP3_USERNAME:-}
+      - POP3_PASSWORD=${POP3_PASSWORD:-}
+      - POP3_SERVER=${POP3_SERVER:-}
+      - POP3_PORT=${POP3_PORT:-995}
+      - SMTP_USE_STARTTLS=${SMTP_USE_STARTTLS:-true}
+      # Gmail OAuth credentials
+      - OAUTH_GMAIL_CLIENT_ID=${OAUTH_GMAIL_CLIENT_ID:-}
+      - OAUTH_GMAIL_CLIENT_SECRET=${OAUTH_GMAIL_CLIENT_SECRET:-}
+      # Outlook OAuth credentials
+      - OAUTH_OUTLOOK_CLIENT_ID=${OAUTH_OUTLOOK_CLIENT_ID:-}
+      - OAUTH_OUTLOOK_CLIENT_SECRET=${OAUTH_OUTLOOK_CLIENT_SECRET:-}
+      - OAUTH_OUTLOOK_TENANT_ID=${OAUTH_OUTLOOK_TENANT_ID:-common}
+      # OAuth configuration
+      - OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI:-http://localhost:8000/oauth/callback}
+      # Session configuration
+      - SESSION_TIMEOUT=${SESSION_TIMEOUT:-3600}
+      - SESSION_SECRET=${SESSION_SECRET:-}
+      # Cookie security
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+      - COOKIE_SAMESITE=${COOKIE_SAMESITE:-lax}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: "1G"

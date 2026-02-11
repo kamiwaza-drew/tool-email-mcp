@@ -40,6 +40,14 @@ oauth_handler = OAuthHandler(session_manager)
 
 # Note: Cleanup task will be started after event loop starts
 
+# Check if OAuth Broker is configured via environment
+# Prefer token file for auto-refresh, fall back to static token
+oauth_broker_configured = all([
+    os.getenv("KAMIWAZA_OAUTH_BROKER_URL"),
+    os.getenv("KAMIWAZA_APP_INSTALLATION_ID"),
+    (os.getenv("KAMIWAZA_TOKEN_FILE") or os.getenv("KAMIWAZA_TOKEN"))
+])
+
 # Check if IMAP credentials are configured via environment
 imap_configured = all([
     os.getenv("IMAP_USERNAME"),
@@ -47,24 +55,20 @@ imap_configured = all([
     os.getenv("IMAP_SERVER")
 ])
 
-if imap_configured:
-    print("🔐 IMAP credentials configured via environment")
-
-# Check if OAuth Broker is configured
-oauth_broker_configured = all([
-    os.getenv("KAMIWAZA_OAUTH_BROKER_URL"),
-    os.getenv("KAMIWAZA_APP_INSTALLATION_ID"),
-    os.getenv("KAMIWAZA_TOKEN")
-])
-
 if oauth_broker_configured:
     print("🔐 OAuth Broker integration enabled")
-    print(f"   Broker URL: {os.getenv('KAMIWAZA_OAUTH_BROKER_URL')}")
-    print(f"   App ID: {os.getenv('KAMIWAZA_APP_INSTALLATION_ID')}")
-
-oauth_providers = get_configured_providers()
-if oauth_providers:
-    print(f"🔐 OAuth enabled for: {', '.join(oauth_providers)}")
+    print(f"   App Installation ID: {os.getenv('KAMIWAZA_APP_INSTALLATION_ID')}")
+    print(f"   OAuth Broker URL: {os.getenv('KAMIWAZA_OAUTH_BROKER_URL')}")
+    if os.getenv("KAMIWAZA_TOKEN_FILE"):
+        print(f"   🔄 Using dynamic token from: {os.getenv('KAMIWAZA_TOKEN_FILE')}")
+    else:
+        print("   ⚠️ Using static token (will expire after 5 minutes)")
+elif imap_configured:
+    print("🔐 IMAP credentials configured via environment")
+else:
+    oauth_providers = get_configured_providers()
+    if oauth_providers:
+        print(f"🔐 OAuth enabled for: {', '.join(oauth_providers)}")
 
 print(f"⏱️  Session timeout: {session_timeout} seconds ({session_timeout // 60} minutes)")
 
@@ -80,7 +84,9 @@ mcp = FastMCP(
 # ===== Helper Functions =====
 
 async def ensure_imap_configured() -> Dict[str, Any]:
-    """Configure IMAP provider from environment if available.
+    """Configure email provider from environment if available.
+
+    Checks for OAuth Broker configuration first, then IMAP.
 
     Returns:
         Dict with success=True if configured, or error dict if not
@@ -89,7 +95,26 @@ async def ensure_imap_configured() -> Dict[str, Any]:
     if email_ops.provider is not None:
         return {"success": True}
 
-    # Try to configure from environment
+    # Try OAuth Broker first (preferred method for Kamiwaza deployments)
+    if oauth_broker_configured:
+        # Prefer token file for auto-refresh (continuously updated PAT)
+        token_file = os.getenv("KAMIWAZA_TOKEN_FILE")
+        config = {
+            "oauth_broker_url": os.getenv("KAMIWAZA_OAUTH_BROKER_URL"),
+            "app_installation_id": os.getenv("KAMIWAZA_APP_INSTALLATION_ID"),
+            "tool_id": os.getenv("KAMIWAZA_TOOL_ID", "email-mcp")
+        }
+
+        if token_file:
+            config["kamiwaza_token_file"] = token_file
+        else:
+            # Fall back to static token (will expire)
+            config["kamiwaza_token"] = os.getenv("KAMIWAZA_TOKEN")
+
+        result = await email_ops.configure_provider("oauth-broker", config)
+        return result
+
+    # Fall back to IMAP if configured
     if imap_configured:
         result = await email_ops.configure_provider("imap", {
             "username": os.getenv("IMAP_USERNAME"),
@@ -104,46 +129,8 @@ async def ensure_imap_configured() -> Dict[str, Any]:
 
     return {
         "success": False,
-        "error": "No email provider configured. Use configure_email_provider tool or set IMAP environment variables."
+        "error": "No email provider configured. Use configure_email_provider tool or set IMAP/OAuth Broker environment variables."
     }
-
-
-async def check_oauth_broker_connection() -> Dict[str, Any]:
-    """Check OAuth Broker connection status.
-
-    Returns:
-        Dict with connection status
-    """
-    if not oauth_broker_configured:
-        return {"connected": False}
-
-    try:
-        import requests
-        url = f"{os.getenv('KAMIWAZA_OAUTH_BROKER_URL')}/connections/status"
-        params = {
-            "app_id": os.getenv("KAMIWAZA_APP_INSTALLATION_ID"),
-            "provider": "google"
-        }
-        response = requests.get(
-            url,
-            params=params,
-            headers={"Authorization": f"Bearer {os.getenv('KAMIWAZA_TOKEN')}"},
-            timeout=5
-        )
-
-        if response.status_code == 200:
-            data = response.json()
-            return {
-                "connected": data.get("status") == "connected",
-                "email": data.get("email"),
-                "needs_reauth": data.get("status") == "needs_reauth"
-            }
-
-        return {"connected": False}
-
-    except Exception as e:
-        print(f"Error checking OAuth Broker connection: {e}")
-        return {"connected": False}
 
 
 async def require_authentication() -> Dict[str, Any]:
@@ -152,35 +139,7 @@ async def require_authentication() -> Dict[str, Any]:
     Returns:
         Dict with success=True if authenticated, or error dict if not
     """
-    # First try OAuth Broker if configured
-    if oauth_broker_configured and email_ops.provider_name != "oauth-broker":
-        # Auto-configure OAuth Broker provider
-        result = await email_ops.configure_provider("oauth-broker", {
-            "kamiwaza_token": os.getenv("KAMIWAZA_TOKEN"),
-            "oauth_broker_url": os.getenv("KAMIWAZA_OAUTH_BROKER_URL"),
-            "app_installation_id": os.getenv("KAMIWAZA_APP_INSTALLATION_ID"),
-            "tool_id": os.getenv("KAMIWAZA_TOOL_ID", "email-mcp")
-        })
-
-        if result.get("success"):
-            # Check if actually connected to Google
-            status = await check_oauth_broker_connection()
-            if not status.get("connected"):
-                kamiwaza_ui_url = os.getenv("KAMIWAZA_UI_URL", "https://localhost")
-                app_id = os.getenv("KAMIWAZA_APP_INSTALLATION_ID")
-                return {
-                    "success": False,
-                    "error": "Google account not connected",
-                    "auth_required": True,
-                    "auth_url": f"{kamiwaza_ui_url}/oauth/google/connect?app_id={app_id}"
-                }
-            return {"success": True}
-
-    # If OAuth Broker is active and configured, we're good
-    if email_ops.provider_name == "oauth-broker":
-        return {"success": True}
-
-    # Fall back to IMAP from environment
+    # First try IMAP from environment
     imap_result = await ensure_imap_configured()
     if imap_result.get("success"):
         return {"success": True}
@@ -254,26 +213,6 @@ async def oauth_status(request: Request):
     Returns:
         JSON with authentication status and available providers
     """
-    # Check OAuth Broker first
-    if oauth_broker_configured:
-        status = await check_oauth_broker_connection()
-        if status.get("connected"):
-            return JSONResponse({
-                "authenticated": True,
-                "provider": "oauth-broker",
-                "email": status.get("email"),
-                "configured_via": "oauth_broker"
-            })
-        elif status.get("needs_reauth"):
-            kamiwaza_ui_url = os.getenv("KAMIWAZA_UI_URL", "https://localhost")
-            app_id = os.getenv("KAMIWAZA_APP_INSTALLATION_ID")
-            return JSONResponse({
-                "authenticated": False,
-                "provider": "oauth-broker",
-                "needs_reauth": True,
-                "auth_url": f"{kamiwaza_ui_url}/oauth/google/connect?app_id={app_id}"
-            })
-
     session = get_current_session()
 
     if session and session.get("authenticated"):
@@ -401,11 +340,13 @@ async def read_email(message_id: str) -> Dict[str, Any]:
     if not auth_check.get("success"):
         return auth_check
 
-    validation = security_manager.validate_message_id(message_id)
-    if not validation["valid"]:
-        return {"success": False, "error": validation["error"]}
+    # Validate message ID (raises ValueError if invalid)
+    try:
+        validated_id = security_manager.validate_message_id(message_id)
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
 
-    return await email_ops.read_email(message_id)
+    return await email_ops.read_email(validated_id)
 
 
 @mcp.tool()
@@ -434,11 +375,24 @@ async def send_email(
     if not auth_check.get("success"):
         return auth_check
 
-    validation = security_manager.validate_send_email(to, subject, body, cc, bcc)
-    if not validation["valid"]:
-        return {"success": False, "error": validation["error"]}
+    # Validate all send_email parameters
+    try:
+        validated_to = security_manager.validate_email_list(to, max_count=100)
+        validated_subject = security_manager.validate_subject(subject)
+        validated_body = security_manager.validate_body(body, allow_html=html)
 
-    return await email_ops.send_email(to, subject, body, cc, bcc, html)
+        validated_cc = None
+        if cc:
+            validated_cc = security_manager.validate_email_list(cc, max_count=100)
+
+        validated_bcc = None
+        if bcc:
+            validated_bcc = security_manager.validate_email_list(bcc, max_count=100)
+
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
+
+    return await email_ops.send_email(validated_to, validated_subject, validated_body, validated_cc, validated_bcc, html)
 
 
 @mcp.tool()
@@ -463,11 +417,13 @@ async def reply_email(
     if not auth_check.get("success"):
         return auth_check
 
-    validation = security_manager.validate_message_id(message_id)
-    if not validation["valid"]:
-        return {"success": False, "error": validation["error"]}
+    # Validate message ID (raises ValueError if invalid)
+    try:
+        validated_id = security_manager.validate_message_id(message_id)
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
 
-    return await email_ops.reply_email(message_id, body, reply_all, html)
+    return await email_ops.reply_email(validated_id, body, reply_all, html)
 
 
 @mcp.tool()
@@ -511,11 +467,13 @@ async def delete_email(message_id: str) -> Dict[str, Any]:
     if not auth_check.get("success"):
         return auth_check
 
-    validation = security_manager.validate_message_id(message_id)
-    if not validation["valid"]:
-        return {"success": False, "error": validation["error"]}
+    # Validate message ID (raises ValueError if invalid)
+    try:
+        validated_id = security_manager.validate_message_id(message_id)
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
 
-    return await email_ops.delete_email(message_id)
+    return await email_ops.delete_email(validated_id)
 
 
 @mcp.tool()
@@ -536,11 +494,13 @@ async def mark_email_read(
     if not auth_check.get("success"):
         return auth_check
 
-    validation = security_manager.validate_message_id(message_id)
-    if not validation["valid"]:
-        return {"success": False, "error": validation["error"]}
+    # Validate message ID (raises ValueError if invalid)
+    try:
+        validated_id = security_manager.validate_message_id(message_id)
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
 
-    return await email_ops.mark_read(message_id, read)
+    return await email_ops.mark_read(validated_id, read)
 
 
 @mcp.tool()
@@ -564,11 +524,13 @@ async def search_emails(
     if not auth_check.get("success"):
         return auth_check
 
-    validation = security_manager.validate_search_query(query, limit)
-    if not validation["valid"]:
-        return {"success": False, "error": validation["error"]}
+    # Validate query only (limit validation happens in email_ops)
+    try:
+        validated_query = security_manager.validate_search_query(query)
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
 
-    return await email_ops.search_emails(query, limit)
+    return await email_ops.search_emails(validated_query, limit)
 
 
 @mcp.tool()

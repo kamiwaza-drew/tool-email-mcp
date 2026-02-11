@@ -78,10 +78,6 @@ mcp = FastMCP(
     ),
 )
 
-# Add middleware to extract Authorization header and session cookies
-# CRITICAL: This must be added to enable per-request token authentication
-mcp.app.add_middleware(SessionAuthMiddleware, session_manager=session_manager)
-
 
 # ===== Helper Functions =====
 
@@ -535,6 +531,10 @@ async def get_folders() -> dict[str, Any]:
 
 # Expose for uvicorn
 app = mcp.streamable_http_app()
+
+# Add middleware to extract Authorization header and session cookies
+# CRITICAL: This must be added to enable per-request token authentication
+app.add_middleware(SessionAuthMiddleware, session_manager=session_manager)
 
 if __name__ == "__main__":
     import uvicorn

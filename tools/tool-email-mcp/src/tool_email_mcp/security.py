@@ -328,3 +328,22 @@ class SecurityManager:
             raise ValueError(f"Page size too large (max {max_page_size})")
 
         return page_size
+
+    def validate_list_params(self, folder: str, limit: int) -> dict:
+        """Validate list emails parameters.
+
+        Args:
+            folder: Folder/label name
+            limit: Maximum number of emails to return
+
+        Returns:
+            Dict with validation result:
+                - valid (bool): Whether parameters are valid
+                - error (str): Error message if invalid
+        """
+        try:
+            self.validate_label(folder)
+            self.validate_pagination(limit)
+            return {"valid": True}
+        except ValueError as e:
+            return {"valid": False, "error": str(e)}

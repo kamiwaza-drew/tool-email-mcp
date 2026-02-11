@@ -19,6 +19,7 @@ from starlette.responses import JSONResponse
 
 from .context import get_current_session
 from .email_operations import EmailOperations
+from .middleware import SessionAuthMiddleware
 from .oauth_handler import OAuthHandler
 from .providers_config import get_configured_providers
 from .security import SecurityManager
@@ -76,6 +77,10 @@ mcp = FastMCP(
         enable_dns_rebinding_protection=False,
     ),
 )
+
+# Add middleware to extract Authorization header and session cookies
+# CRITICAL: This must be added to enable per-request token authentication
+mcp.app.add_middleware(SessionAuthMiddleware, session_manager=session_manager)
 
 
 # ===== Helper Functions =====

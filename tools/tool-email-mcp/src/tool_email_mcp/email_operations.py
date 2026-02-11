@@ -24,7 +24,6 @@ class EmailOperations:
         """
         self.security = security_manager
         self.provider: Optional[EmailProvider] = None
-        self.provider_name: Optional[str] = None  # Track which provider is active
 
     def _ensure_provider(self) -> Dict[str, Any]:
         """Ensure provider is initialized.
@@ -47,7 +46,7 @@ class EmailOperations:
         """Configure email provider with OAuth credentials, IMAP, or POP3.
 
         Args:
-            provider_type: "gmail", "outlook", "imap", or "pop3"
+            provider_type: "gmail", "outlook", "imap", "pop3", or "oauth-broker"
             credentials: OAuth credentials dictionary or IMAP/POP3 credentials
                 For IMAP:
                     - username: Email address
@@ -66,6 +65,11 @@ class EmailOperations:
                     - smtp_port: SMTP port (default 587)
                     - use_ssl: Use SSL for POP3 (default True)
                     - use_starttls: Use STARTTLS for SMTP (default True)
+                For OAuth Broker:
+                    - kamiwaza_token: User's Kamiwaza PAT token
+                    - oauth_broker_url: OAuth Broker base URL
+                    - app_installation_id: App installation ID
+                    - tool_id: Tool identifier (default "email-mcp")
 
         Returns:
             Dict with success status
@@ -73,7 +77,6 @@ class EmailOperations:
         try:
             if provider_type.lower() == "gmail":
                 self.provider = GmailProvider(credentials)
-                self.provider_name = "gmail"
                 return {
                     "success": True,
                     "provider": "gmail",
@@ -81,11 +84,17 @@ class EmailOperations:
                 }
             elif provider_type.lower() == "outlook":
                 self.provider = OutlookProvider(credentials)
-                self.provider_name = "outlook"
                 return {
                     "success": True,
                     "provider": "outlook",
                     "message": "Outlook provider configured"
+                }
+            elif provider_type.lower() == "oauth-broker":
+                self.provider = OAuthBrokerProvider(credentials)
+                return {
+                    "success": True,
+                    "provider": "oauth-broker",
+                    "message": "OAuth Broker provider configured (Kamiwaza-managed)"
                 }
             elif provider_type.lower() == "imap":
                 self.provider = IMAPProvider(
@@ -97,7 +106,6 @@ class EmailOperations:
                     smtp_port=int(credentials.get("smtp_port", 465)),
                     use_ssl=credentials.get("use_ssl", "true").lower() == "true"
                 )
-                self.provider_name = "imap"
                 return {
                     "success": True,
                     "provider": "imap",
@@ -114,19 +122,10 @@ class EmailOperations:
                     use_ssl=credentials.get("use_ssl", "true").lower() == "true",
                     use_starttls=credentials.get("use_starttls", "true").lower() == "true"
                 )
-                self.provider_name = "pop3"
                 return {
                     "success": True,
                     "provider": "pop3",
                     "message": f"POP3 provider configured for {credentials.get('username')}"
-                }
-            elif provider_type.lower() == "oauth-broker":
-                self.provider = OAuthBrokerProvider(credentials)
-                self.provider_name = "oauth-broker"
-                return {
-                    "success": True,
-                    "provider": "oauth-broker",
-                    "message": "OAuth Broker provider configured"
                 }
             else:
                 return {
